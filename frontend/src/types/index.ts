@@ -1,17 +1,23 @@
-export type Size = {
-  size: string;
-  stock: number;
-};
+export interface ProductVariant {
+  id?: number
+  color: string
+  size: string
+  stock: number
+}
 
-export type Variant = {
-  color: string;
-  sizes: Size[];
-};
+export interface Product {
+  id?: number
+  name: string
+  price: number
+  category: string
+  description?: string
+  image: string
+  variants: ProductVariant[]
+}
 
-export type Product = {
-  id: number;
-  name: string;
-  price: number;
-  image: string;
-  variants: Variant[];
-};
+export interface Order {
+  id: number
+  status: 'new' | 'done'
+  items: unknown[]
+  createdAt: string
+}
