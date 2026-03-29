@@ -23,7 +23,7 @@ export default function ProductCard({ product }: { product: Product }) {
               key={i}
               onClick={() => {
                 setSelectedVariant(v);
-                setSelectedSize(null); // сброс размера при смене цвета
+                setSelectedSize(null);
               }}
               className={`px-2 py-1 border ${
                 selectedVariant.color === v.color ? "bg-black text-white" : ""
@@ -39,18 +39,20 @@ export default function ProductCard({ product }: { product: Product }) {
       <div>
         <p>Размер:</p>
         <div className="flex gap-2">
-          {selectedVariant.sizes.map((s, i) => (
-            <button
-              key={i}
-              disabled={s.stock === 0}
-              onClick={() => setSelectedSize(s.size)}
-              className={`px-2 py-1 border ${
-                selectedSize === s.size ? "bg-black text-white" : ""
-              } ${s.stock === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
-            >
-              {s.size}
-            </button>
-          ))}
+          {product.variants
+            .filter((v) => v.color === selectedVariant.color)
+            .map((v, i) => (
+              <button
+                key={i}
+                disabled={v.stock === 0}
+                onClick={() => setSelectedSize(v.size)}
+                className={`px-2 py-1 border ${
+                  selectedSize === v.size ? "bg-black text-white" : ""
+                } ${v.stock === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                {v.size}
+              </button>
+            ))}
         </div>
       </div>
 
@@ -59,7 +61,7 @@ export default function ProductCard({ product }: { product: Product }) {
         disabled={!selectedSize}
         onClick={() => {
           addItem({
-            productId: product.id,
+            productId: product.id!, // 👈 фикс
             name: product.name,
             price: product.price,
             size: selectedSize!,

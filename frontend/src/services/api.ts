@@ -1,4 +1,5 @@
-export async function getProducts() {
-  const res = await fetch("https://your-api-url.com/products");
-  return res.json();
-}
+import axios from "axios";
+
+export const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL,
+});

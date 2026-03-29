@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getProducts } from "../services/api";
+import { api } from "../services/api";
 import type { Product } from "../types";
 import ProductGrid from "../components/product/ProductGrid";
 
@@ -7,7 +7,12 @@ export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
 
   useEffect(() => {
-    getProducts().then(setProducts);
+    const fetchProducts = async () => {
+      const res = await api.get("/products");
+      setProducts(res.data);
+    };
+
+    fetchProducts();
   }, []);
 
   return (
