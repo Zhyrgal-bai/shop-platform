@@ -8,14 +8,12 @@ export default function App() {
 
   return (
     <div>
-      {/* навигация */}
       <div style={{ display: "flex", gap: 10, padding: 10 }}>
         <button onClick={() => setPage("home")}>Главная</button>
         <button onClick={() => setPage("cart")}>Корзина</button>
-        <button onClick={() => setPage("admin")}>Админ</button>
+        <button onClick={() => setPage("admin")}>Админ</button> {/* 👈 ВАЖНО */}
       </div>
 
-      {/* страницы */}
       {page === "home" && <HomePage />}
       {page === "cart" && <CartPage />}
       {page === "admin" && <AdminPage />}
