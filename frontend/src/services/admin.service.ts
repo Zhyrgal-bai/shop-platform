@@ -1,5 +1,5 @@
 import { api } from "./api";
-import type { Product } from "../types/admin.types";
+import type { Product } from "../types/";
 
 export const adminService = {
   getProducts: async (): Promise<Product[]> => {

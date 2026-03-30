@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Product } from "../types/admin.types";
+import type { Product } from "../types/";
 import { adminService } from "../services/admin.service";
 
 interface AdminState {

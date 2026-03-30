@@ -1,75 +1,56 @@
 import { useState } from "react";
-import type { Product } from "../../types";
+import type { Product, Variant, Size } from "../../types";
 import { useCartStore } from "../../store/useCartStore";
 
 export default function ProductCard({ product }: { product: Product }) {
-  const [selectedVariant, setSelectedVariant] = useState(product.variants[0]);
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<Variant>(
+    product.variants[0]
+  );
+  const [selectedSize, setSelectedSize] = useState<Size | null>(null);
+
   const addItem = useCartStore((state) => state.addItem);
 
   return (
-    <div className="border p-2 rounded-xl space-y-2">
-      <img src={product.image} className="w-full" />
+    <div className="border p-2">
+      <img src={product.image} />
 
       <h3>{product.name}</h3>
       <p>{product.price} сом</p>
 
-      {/* 🎨 COLORS */}
+      {/* Цвет */}
       <div>
-        <p>Цвет:</p>
-        <div className="flex gap-2">
-          {product.variants.map((v, i) => (
-            <button
-              key={i}
-              onClick={() => {
-                setSelectedVariant(v);
-                setSelectedSize(null);
-              }}
-              className={`px-2 py-1 border ${
-                selectedVariant.color === v.color ? "bg-black text-white" : ""
-              }`}
-            >
-              {v.color}
-            </button>
-          ))}
-        </div>
+        {product.variants.map((v, i) => (
+          <button key={i} onClick={() => setSelectedVariant(v)}>
+            {v.color}
+          </button>
+        ))}
       </div>
 
-      {/* 📏 SIZES */}
+      {/* Размер */}
       <div>
-        <p>Размер:</p>
-        <div className="flex gap-2">
-          {product.variants
-            .filter((v) => v.color === selectedVariant.color)
-            .map((v, i) => (
-              <button
-                key={i}
-                disabled={v.stock === 0}
-                onClick={() => setSelectedSize(v.size)}
-                className={`px-2 py-1 border ${
-                  selectedSize === v.size ? "bg-black text-white" : ""
-                } ${v.stock === 0 ? "opacity-50 cursor-not-allowed" : ""}`}
-              >
-                {v.size}
-              </button>
-            ))}
-        </div>
+        {selectedVariant.sizes.map((s, i) => (
+          <button
+            key={i}
+            disabled={s.stock === 0}
+            onClick={() => setSelectedSize(s)}
+          >
+            {s.size}
+          </button>
+        ))}
       </div>
 
-      {/* 🛒 BUTTON */}
       <button
         disabled={!selectedSize}
-        onClick={() => {
+        onClick={() =>
           addItem({
-            productId: product.id!, // 👈 фикс
+            productId: product.id!,
             name: product.name,
             price: product.price,
-            size: selectedSize!,
+            size: selectedSize!.size,
             color: selectedVariant.color,
             quantity: 1,
-          });
-        }}
-        className="bg-black text-white w-full py-2 rounded disabled:bg-gray-400"
+          })
+        }
       >
         Купить
       </button>
