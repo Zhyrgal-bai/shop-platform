@@ -21,29 +21,27 @@ model User {
 }
 
 model Product {
-  id          Int      @id @default(autoincrement())
+  id          Int       @id @default(autoincrement())
   name        String
   price       Int
-  category    String
-  description String?
   image       String
-  isAvailable Boolean @default(true)
+  description String?
 
   variants    Variant[]
 }
 
 model Variant {
-  id        Int      @id @default(autoincrement())
+  id        Int    @id @default(autoincrement())
   color     String
 
-  product   Product  @relation(fields: [productId], references: [id])
+  product   Product @relation(fields: [productId], references: [id])
   productId Int
 
   sizes     Size[]
 }
 
 model Size {
-  id        Int   @id @default(autoincrement())
+  id        Int    @id @default(autoincrement())
   size      String
   stock     Int
 

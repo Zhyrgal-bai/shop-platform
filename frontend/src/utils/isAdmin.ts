@@ -1,8 +1,12 @@
-import { getTelegramUser } from "./telegram"
+import { getTelegramUser } from "./telegram";
+
+const ADMIN_ID = Number(import.meta.env.VITE_ADMIN_ID);
 
 export const isAdmin = () => {
-  const user = getTelegramUser()
-  const ADMIN_ID = Number(import.meta.env.VITE_ADMIN_ID)
+  const user = getTelegramUser();
 
-  return user?.id === ADMIN_ID
-}
+  console.log("USER:", user);
+  console.log("ADMIN_ID:", ADMIN_ID);
+
+  return user?.id === ADMIN_ID;
+};

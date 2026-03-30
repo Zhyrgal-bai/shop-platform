@@ -18,35 +18,43 @@ app.get("/", (req: Request, res: Response) => {
 
 // ================== CREATE PRODUCT ==================
 // Добавление нового товара (админка)
-app.post("/products", async (req: Request, res: Response) => {
+app.post("/products", async (req, res) => {
   try {
-    // получаем данные из запроса
-    const body = req.body as {
-      name: string;
-      price: number;
-      category: string;
-      image: string;
-    };
+    const { name, price, image, description, variants } = req.body;
 
-    // создаём товар в базе данных
     const product = await prisma.product.create({
       data: {
-        name: body.name,
-        price: body.price,
-        category: body.category,
-        image: body.image,
+        name,
+        price,
+        image,
+        description,
+
+        variants: {
+          create: variants.map((v: any) => ({
+            color: v.color,
+
+            sizes: {
+              create: v.sizes.map((s: any) => ({
+                size: s.size,
+                stock: s.stock,
+              })),
+            },
+          })),
+        },
+      },
+      include: {
+        variants: {
+          include: {
+            sizes: true,
+          },
+        },
       },
     });
 
-    // отправляем созданный товар обратно клиенту
     res.json(product);
-
-  } catch (error) {
-    // если ошибка — выводим в консоль
-    console.error(error);
-
-    // отправляем ошибку клиенту
-    res.status(500).json({ error: "Ошибка при создании товара" });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Ошибка создания товара" });
   }
 });
 
