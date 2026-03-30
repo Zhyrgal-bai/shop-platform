@@ -23,20 +23,25 @@ app.post("/products", async (req: Request, res: Response) => {
   try {
     const { name, price, image, description, variants } = req.body;
 
-    // 🔴 ПРОВЕРКА
-    if (!name || !price || !variants || variants.length === 0) {
+    // 🔴 ВАЛИДАЦИЯ
+    if (!name || !price || !image || !variants || variants.length === 0) {
       return res.status(400).json({ error: "Неверные данные" });
     }
+
+    const cleanVariants = variants.map((v: any) => ({
+      color: v.color,
+      sizes: v.sizes.filter((s: any) => s.size && s.stock > 0), // 👈 ФИЛЬТР
+    }));
 
     const product = await prisma.product.create({
       data: {
         name,
         price,
         image,
-        description: description || "", // 👈 фикс
+        description: description || "",
 
         variants: {
-          create: variants.map((v: any) => ({
+          create: cleanVariants.map((v: any) => ({
             color: v.color,
 
             sizes: {
@@ -59,11 +64,10 @@ app.post("/products", async (req: Request, res: Response) => {
 
     res.json(product);
   } catch (e) {
-    console.error("CREATE PRODUCT ERROR:", e);
+    console.error("PRISMA ERROR:", e); // 👈 САМОЕ ВАЖНОЕ
     res.status(500).json({ error: "Ошибка создания товара" });
   }
 });
-
 
 // ================== GET PRODUCTS ==================
 app.get("/products", async (req: Request, res: Response) => {
