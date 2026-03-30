@@ -8,7 +8,6 @@ const ProductForm = () => {
   const [name, setName] = useState("");
   const [price, setPrice] = useState(0);
   const [image, setImage] = useState("");
-
   const [variants, setVariants] = useState<Variant[]>([]);
 
   const addVariant = () => {
@@ -34,30 +33,60 @@ const ProductForm = () => {
     value: string | number
   ) => {
     const updated = [...variants];
+
     if (key === "size") {
       updated[vIndex].sizes[sIndex].size = value as string;
     } else {
       updated[vIndex].sizes[sIndex].stock = value as number;
     }
+
     setVariants(updated);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    await addProduct({
+    if (!name || !price || variants.length === 0) {
+      alert("Заполни все поля");
+      return;
+    }
+
+    for (const v of variants) {
+      if (!v.color || v.sizes.length === 0) {
+        alert("Добавь цвет и размеры");
+        return;
+      }
+
+      for (const s of v.sizes) {
+        if (!s.size || s.stock <= 0) {
+          alert("Размер или stock неверный");
+          return;
+        }
+      }
+    }
+
+    const data = {
       name,
       price,
       image,
       description: "",
-      category: "clothes",
       variants,
-    });
+    };
 
-    setName("");
-    setPrice(0);
-    setImage("");
-    setVariants([]);
+    console.log("SENDING:", data);
+
+    try {
+      await addProduct(data);
+      alert("Товар добавлен ✅");
+
+      setName("");
+      setPrice(0);
+      setImage("");
+      setVariants([]);
+    } catch (err) {
+      console.error(err);
+      alert("Ошибка ❌");
+    }
   };
 
   return (
@@ -125,7 +154,9 @@ const ProductForm = () => {
         </div>
       ))}
 
-      <button>Сохранить</button>
+      <button className="bg-black text-white p-2 w-full">
+        Сохранить
+      </button>
     </form>
   );
 };

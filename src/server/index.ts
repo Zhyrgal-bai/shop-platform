@@ -1,33 +1,36 @@
-import express from "express"; // подключаем express (сервер)
-import type { Request, Response } from "express"; // типы для TypeScript
-import { PrismaClient } from "@prisma/client"; // подключаем Prisma (работа с БД)
+import express from "express";
+import type { Request, Response } from "express";
+import { PrismaClient } from "@prisma/client";
 import "../bot/bot.js";
 
-const app = express(); // создаём сервер
-const prisma = new PrismaClient(); // создаём подключение к базе данных
+const app = express();
+const prisma = new PrismaClient();
 
-app.use(express.json()); // чтобы сервер понимал JSON (запросы от клиента)
+app.use(express.json());
 
 
 // ================== ROOT ==================
-// Проверка сервера (работает ли вообще)
 app.get("/", (req: Request, res: Response) => {
   res.send("Server is working 🚀");
 });
 
 
 // ================== CREATE PRODUCT ==================
-// Добавление нового товара (админка)
-app.post("/products", async (req, res) => {
+app.post("/products", async (req: Request, res: Response) => {
   try {
     const { name, price, image, description, variants } = req.body;
+
+    // 🔴 ПРОВЕРКА
+    if (!name || !price || !variants || variants.length === 0) {
+      return res.status(400).json({ error: "Неверные данные" });
+    }
 
     const product = await prisma.product.create({
       data: {
         name,
         price,
         image,
-        description,
+        description: description || "", // 👈 фикс
 
         variants: {
           create: variants.map((v: any) => ({
@@ -53,30 +56,26 @@ app.post("/products", async (req, res) => {
 
     res.json(product);
   } catch (e) {
-    console.error(e);
+    console.error("CREATE PRODUCT ERROR:", e);
     res.status(500).json({ error: "Ошибка создания товара" });
   }
 });
 
 
 // ================== GET PRODUCTS ==================
-// Получение всех товаров (для пользователя / React)
 app.get("/products", async (req: Request, res: Response) => {
   try {
-    // берём товары вместе с вариантами и размерами
     const products = await prisma.product.findMany({
       include: {
         variants: {
           include: {
-            sizes: true, // размеры и остатки
+            sizes: true,
           },
         },
       },
     });
 
-    // отправляем список товаров
     res.json(products);
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Ошибка получения товаров" });
@@ -85,26 +84,10 @@ app.get("/products", async (req: Request, res: Response) => {
 
 
 // ================== CREATE ORDER ==================
-// оформление заказа
 app.post("/orders", async (req: Request, res: Response) => {
   try {
-    const body = req.body as {
-      user: {
-        telegramId: number;
-        name: string;
-      };
-      items: {
-        productId: number;
-        name: string;
-        size: string;
-        color: string;
-        quantity: number;
-        price: number;
-      }[];
-      total: number;
-    };
+    const body = req.body;
 
-    // найти или создать пользователя
     let user = await prisma.user.findUnique({
       where: { telegramId: body.user.telegramId },
     });
@@ -118,7 +101,6 @@ app.post("/orders", async (req: Request, res: Response) => {
       });
     }
 
-    // создать заказ
     const order = await prisma.order.create({
       data: {
         userId: user.id,
@@ -126,7 +108,7 @@ app.post("/orders", async (req: Request, res: Response) => {
         status: "new",
 
         items: {
-          create: body.items.map((item) => ({
+          create: body.items.map((item: any) => ({
             productId: item.productId,
             name: item.name,
             size: item.size,
@@ -142,7 +124,6 @@ app.post("/orders", async (req: Request, res: Response) => {
     });
 
     res.json(order);
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Ошибка при создании заказа" });
@@ -151,7 +132,6 @@ app.post("/orders", async (req: Request, res: Response) => {
 
 
 // ================== START SERVER ==================
-// запуск сервера
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
