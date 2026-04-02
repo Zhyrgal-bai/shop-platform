@@ -1,4 +1,6 @@
 import { useCartStore } from "../store/useCartStore";
+import { api } from "../services/api";
+import { getTelegramUser } from "../utils/telegram";
 
 export default function CartPage() {
   const items = useCartStore((state) => state.items);
@@ -6,53 +8,62 @@ export default function CartPage() {
   const getTotal = useCartStore((state) => state.getTotal);
 
   const handleOrder = async () => {
-    const total = getTotal();
+    try {
+      const total = getTotal();
 
-    const res = await fetch("http://localhost:3000/orders", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+      const user = getTelegramUser();
+
+      const res = await api.post("/orders", {
         user: {
-          telegramId: 1,
-          name: "Ali",
+          telegramId: user?.id || 0,
+          name: user?.first_name || "Unknown",
         },
         items,
         total,
-      }),
-    });
+      });
 
-    const data = await res.json();
+      console.log("ORDER CREATED:", res.data);
 
-    console.log("ORDER CREATED:", data);
-
-    clearCart();
-    alert("Заказ оформлен ✅");
+      clearCart();
+      alert("Заказ оформлен ✅");
+    } catch (err) {
+      console.error("ORDER ERROR:", err);
+      alert("Ошибка при заказе ❌");
+    }
   };
 
   return (
     <div className="p-4">
-      <h1>Корзина 🛒</h1>
+      <h1 className="text-xl font-bold mb-4">Корзина 🛒</h1>
+
+      {items.length === 0 && <p>Корзина пустая</p>}
 
       {items.map((item, i) => (
-        <div key={i} className="border p-2 mb-2">
-          <p>{item.name}</p>
-          <p>
+        <div key={i} className="border p-2 mb-2 rounded">
+          <p className="font-semibold">{item.name}</p>
+
+          <p className="text-sm text-gray-500">
             {item.color} / {item.size}
           </p>
+
           <p>{item.price} сом</p>
         </div>
       ))}
 
-      <h2>Итого: {getTotal()} сом</h2>
+      {items.length > 0 && (
+        <>
+          <h2 className="mt-4 font-bold">
+            Итого: {getTotal()} сом
+          </h2>
 
-      <button
-        onClick={handleOrder}
-        className="bg-black text-white w-full py-2 mt-4"
-      >
-        Оформить заказ
-      </button>
+          <button
+            onClick={handleOrder}
+            className="bg-black text-white w-full py-2 mt-4 rounded"
+          >
+            Оформить заказ
+          </button>
+        </>
+      )}
     </div>
   );
 }
