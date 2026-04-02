@@ -41,7 +41,6 @@ app.post("/products", async (req: Request, res: Response) => {
         variants: {
           create: cleanVariants.map((v: any) => ({
             color: v.color,
-
             sizes: {
               create: v.sizes.map((s: any) => ({
                 size: s.size,
@@ -90,22 +89,22 @@ app.get("/products", async (req: Request, res: Response) => {
 // ================== CREATE ORDER ==================
 app.post("/orders", async (req: Request, res: Response) => {
   try {
-    console.log("ORDER BODY:", req.body); // 🔥 ДОБАВИЛИ
-
     const body = req.body;
+
+    console.log("ORDER BODY:", body);
 
     if (!body.user || !body.items || !body.total) {
       return res.status(400).json({ error: "Неверные данные заказа" });
     }
 
     let user = await prisma.user.findUnique({
-      where: { telegramId: BigInt(body.user.telegramId) }, // 🔥 ВАЖНО
+      where: { telegramId: BigInt(body.user.telegramId) },
     });
 
     if (!user) {
       user = await prisma.user.create({
         data: {
-          telegramId: BigInt(body.user.telegramId), // 🔥 ВАЖНО
+          telegramId: BigInt(body.user.telegramId),
           name: body.user.name,
         },
       });
@@ -114,17 +113,17 @@ app.post("/orders", async (req: Request, res: Response) => {
     const order = await prisma.order.create({
       data: {
         userId: user.id,
-        total: body.total,
+        total: Number(body.total),
         status: "new",
 
         items: {
           create: body.items.map((item: any) => ({
-            productId: item.productId,
+            productId: Number(item.productId),
             name: item.name,
             size: item.size,
             color: item.color,
-            quantity: item.quantity,
-            price: item.price,
+            quantity: Number(item.quantity),
+            price: Number(item.price),
           })),
         },
       },
@@ -133,9 +132,11 @@ app.post("/orders", async (req: Request, res: Response) => {
       },
     });
 
+    console.log("ORDER CREATED:", order);
+
     res.json(order);
   } catch (error) {
-    console.error("ORDER ERROR FULL:", error); // 🔥 САМОЕ ВАЖНОЕ
+    console.error("ORDER ERROR FULL:", error);
     res.status(500).json({ error: "Ошибка при создании заказа" });
   }
 });
