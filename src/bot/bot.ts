@@ -15,7 +15,7 @@ bot.start((ctx) => {
           {
             text: "Открыть магазин",
             web_app: {
-              url: "https://frontend-one-zeta-45.vercel.app",
+              url: "https://bars-miniapp.vercel.app",
             },
           },
         ],
