@@ -159,7 +159,23 @@ ${order.items
       await bot.telegram.sendMessage(
         Number(process.env.ADMIN_ID),
         message,
-        { parse_mode: "HTML" }
+        {
+          parse_mode: "HTML",
+          reply_markup: {
+            inline_keyboard: [
+              [
+                {
+                  text: "✅ Принять",
+                  callback_data: `order_accept_${order.id}`,
+                },
+                {
+                  text: "❌ Завершить",
+                  callback_data: `order_done_${order.id}`,
+                },
+              ],
+            ],
+          },
+        }
       );
 
       console.log("✅ TELEGRAM SENT");
