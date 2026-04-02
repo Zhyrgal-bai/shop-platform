@@ -14,7 +14,7 @@ datasource db {
 
 model User {
   id          Int      @id @default(autoincrement())
-  telegramId  Int      @unique
+  telegramId  BigInt      @unique
   name        String?
 
   orders      Order[]
