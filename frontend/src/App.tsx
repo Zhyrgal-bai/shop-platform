@@ -7,16 +7,36 @@ export default function App() {
   const [page, setPage] = useState<"home" | "cart" | "admin">("home");
 
   return (
-    <div>
-      <div style={{ display: "flex", gap: 10, padding: 10 }}>
-        <button onClick={() => setPage("home")}>Главная</button>
-        <button onClick={() => setPage("cart")}>Корзина</button>
-        <button onClick={() => setPage("admin")}>Админ</button> {/* 👈 ВАЖНО */}
+    <div className="min-h-screen bg-gray-100">
+      
+      <div className="flex gap-3 p-4 bg-white shadow">
+        <button
+          onClick={() => setPage("home")}
+          className="px-4 py-2 bg-blue-500 text-white rounded"
+        >
+          Главная
+        </button>
+
+        <button
+          onClick={() => setPage("cart")}
+          className="px-4 py-2 bg-green-500 text-white rounded"
+        >
+          Корзина
+        </button>
+
+        <button
+          onClick={() => setPage("admin")}
+          className="px-4 py-2 bg-red-500 text-white rounded"
+        >
+          Админ
+        </button>
       </div>
 
-      {page === "home" && <HomePage />}
-      {page === "cart" && <CartPage />}
-      {page === "admin" && <AdminPage />}
+      <div className="p-4">
+        {page === "home" && <HomePage />}
+        {page === "cart" && <CartPage />}
+        {page === "admin" && <AdminPage />}
+      </div>
     </div>
   );
 }
