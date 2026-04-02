@@ -1,6 +1,6 @@
 import { Telegraf } from "telegraf";
 
-const bot = new Telegraf("8750003133:AAGXU_web3I9nIXFxRVmWBOYd-dES8mzCsU"); // <-- сюда вставишь свой токен
+export const bot = new Telegraf(process.env.BOT_TOKEN!);
 
 bot.start((ctx) => {
   ctx.reply("Добро пожаловать в Bars 👕", {
@@ -17,6 +17,11 @@ bot.start((ctx) => {
       ],
     },
   });
+});
+
+// чтобы узнать свой telegram id
+bot.on("message", (ctx) => {
+  console.log("USER ID:", ctx.from.id);
 });
 
 bot.launch();

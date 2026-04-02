@@ -1,7 +1,7 @@
 import express from "express";
 import type { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
-import "../bot/bot.js";
+import { bot } from "../bot/bot.js"; // ✅ ИМПОРТ БОТА
 import cors from "cors";
 
 const app = express();
@@ -133,6 +133,35 @@ app.post("/orders", async (req: Request, res: Response) => {
     });
 
     console.log("ORDER CREATED:", order);
+
+    // ================== 🔥 TELEGRAM NOTIFICATION ==================
+    try {
+      const message = `
+🛒 <b>Новый заказ</b>
+
+👤 <b>${user.name || "Без имени"}</b>
+🆔 <code>${user.telegramId}</code>
+
+💰 <b>${order.total} сом</b>
+
+📦 <b>Товары:</b>
+${order.items
+  .map(
+    (i) =>
+      `• ${i.name} (${i.color}, ${i.size}) x${i.quantity}`
+  )
+  .join("\n")}
+      `;
+
+      await bot.telegram.sendMessage(
+        Number(process.env.ADMIN_ID),
+        message,
+        { parse_mode: "HTML" }
+      );
+    } catch (err) {
+      console.error("TELEGRAM ERROR:", err);
+    }
+    // ============================================================
 
     res.json(order);
   } catch (error) {
