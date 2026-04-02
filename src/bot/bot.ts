@@ -98,7 +98,8 @@ bot.on("callback_query", async (ctx) => {
   }
 });
 
-// ================== LAUNCH ==================
+// ================== LAUNCH =================
+
 bot.launch();
 
 console.log("Bot started 🤖");
