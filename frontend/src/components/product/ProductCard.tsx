@@ -1,41 +1,37 @@
 import { useState } from "react";
 import type { Product, Variant, Size } from "../../types";
 import { useCartStore } from "../../store/useCartStore";
+import "../ui/ProductCard.css";
 
 export default function ProductCard({ product }: { product: Product }) {
   const [selectedVariant, setSelectedVariant] = useState<Variant>(
     product.variants[0]
   );
+
   const [selectedSize, setSelectedSize] = useState<Size | null>(null);
 
   const addItem = useCartStore((state) => state.addItem);
 
   return (
-    <div className="bg-white rounded-2xl shadow-md overflow-hidden p-3">
-      {/* IMAGE */}
-      <img
-        src={product.image}
-        className="w-full h-40 object-cover rounded-xl"
-      />
+    <div className="card">
+      <img src={product.image} className="img" />
 
-      {/* TITLE */}
-      <h3 className="font-semibold mt-2">{product.name}</h3>
-      <p className="text-gray-500 text-sm">{product.price} сом</p>
+      <h3 className="title">{product.name}</h3>
+      <p className="price">{product.price} сом</p>
 
       {/* COLORS */}
-      <div className="flex gap-2 mt-3 flex-wrap">
-        {product.variants.map((v, i) => (
+      <div className="colors">
+        {product.variants.map((v) => (
           <button
-            key={i}
+            key={v.color}
             onClick={() => {
               setSelectedVariant(v);
               setSelectedSize(null);
             }}
-            className={`px-3 py-1 rounded-full text-xs border ${
-              selectedVariant.color === v.color
-                ? "bg-black text-white"
-                : "bg-white"
-            }`}
+            className={
+              "colorBtn " +
+              (selectedVariant.color === v.color ? "colorActive" : "")
+            }
           >
             {v.color}
           </button>
@@ -43,17 +39,17 @@ export default function ProductCard({ product }: { product: Product }) {
       </div>
 
       {/* SIZES */}
-      <div className="flex gap-2 mt-3 flex-wrap">
-        {selectedVariant.sizes.map((s, i) => (
+      <div className="sizes">
+        {selectedVariant.sizes.map((s) => (
           <button
-            key={i}
+            key={s.size}
             disabled={s.stock === 0}
             onClick={() => setSelectedSize(s)}
-            className={`px-3 py-1 rounded-lg text-xs border ${
-              selectedSize?.size === s.size
-                ? "bg-black text-white"
-                : "bg-white"
-            } ${s.stock === 0 ? "opacity-30 cursor-not-allowed" : ""}`}
+            className={
+              "sizeBtn " +
+              (selectedSize?.size === s.size ? "sizeActive" : "") +
+              (s.stock === 0 ? " disabled" : "")
+            }
           >
             {s.size}
           </button>
@@ -63,26 +59,25 @@ export default function ProductCard({ product }: { product: Product }) {
       {/* BUTTON */}
       <button
         disabled={!selectedSize}
-        onClick={() =>
+        onClick={() => {
+          if (!selectedSize) return;
+
           addItem({
             productId: product.id!,
             name: product.name,
             price: product.price,
-            size: selectedSize!.size,
+            size: selectedSize.size,
             color: selectedVariant.color,
             quantity: 1,
-          })
+          });
+        }}
+        className={
+          "btn " +
+          (selectedSize ? "btnActive" : "btnDisabled")
         }
-        className={`w-full mt-4 py-2 rounded-xl font-semibold transition ${
-          selectedSize
-            ? "bg-black text-white active:scale-95"
-            : "bg-gray-300 text-gray-500 cursor-not-allowed"
-        }`}
       >
         Купить
       </button>
     </div>
   );
 }
-
-//tes

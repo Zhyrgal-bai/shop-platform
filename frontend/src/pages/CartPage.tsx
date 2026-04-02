@@ -1,6 +1,7 @@
 import { useCartStore } from "../store/useCartStore";
 import { api } from "../services/api";
 import { getTelegramUser } from "../utils/telegram";
+import "../components/ui/Cart.css";
 
 export default function CartPage() {
   const items = useCartStore((state) => state.items);
@@ -10,7 +11,6 @@ export default function CartPage() {
   const handleOrder = async () => {
     try {
       const total = getTotal();
-
       const user = getTelegramUser();
 
       const res = await api.post("/orders", {
@@ -33,33 +33,30 @@ export default function CartPage() {
   };
 
   return (
-    <div className="p-4">
-      <h1 className="text-xl font-bold mb-4">Корзина 🛒</h1>
+    <div className="cart">
+      <h1 className="cart-title">Корзина 🛒</h1>
 
-      {items.length === 0 && <p>Корзина пустая</p>}
+      {items.length === 0 && <p className="empty">Корзина пустая</p>}
 
       {items.map((item, i) => (
-        <div key={i} className="border p-2 mb-2 rounded">
-          <p className="font-semibold">{item.name}</p>
-
-          <p className="text-sm text-gray-500">
-            {item.color} / {item.size}
-          </p>
-
-          <p>{item.price} сом</p>
+        <div key={i} className="cart-item">
+          <div>
+            <p className="name">{item.name}</p>
+            <p className="meta">
+              {item.color} / {item.size}
+            </p>
+            <p className="price">{item.price} сом</p>
+          </div>
         </div>
       ))}
 
       {items.length > 0 && (
         <>
-          <h2 className="mt-4 font-bold">
+          <h2 className="total">
             Итого: {getTotal()} сом
           </h2>
 
-          <button
-            onClick={handleOrder}
-            className="bg-black text-white w-full py-2 mt-4 rounded"
-          >
+          <button onClick={handleOrder} className="order-btn">
             Оформить заказ
           </button>
         </>
