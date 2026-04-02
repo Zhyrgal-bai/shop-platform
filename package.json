@@ -4,13 +4,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "npx prisma db push && tsx src/server/index.ts",
-    "postinstall": "npx prisma migrate deploy"
+    "start": "npx prisma db push && npx prisma generate && tsx src/server/index.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "cors": "^2.8.6",
