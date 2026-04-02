@@ -90,23 +90,23 @@ app.get("/products", async (req: Request, res: Response) => {
 // ================== CREATE ORDER ==================
 app.post("/orders", async (req: Request, res: Response) => {
   try {
+    console.log("ORDER BODY:", req.body); // 🔥 ДОБАВИЛИ
+
     const body = req.body;
 
-    console.log("ORDER BODY:", body); // 🔥 лог
-
-    if (!body.user || !body.items || body.items.length === 0) {
-      return res.status(400).json({ error: "Пустой заказ" });
+    if (!body.user || !body.items || !body.total) {
+      return res.status(400).json({ error: "Неверные данные заказа" });
     }
 
     let user = await prisma.user.findUnique({
-      where: { telegramId: body.user.telegramId },
+      where: { telegramId: BigInt(body.user.telegramId) }, // 🔥 ВАЖНО
     });
 
     if (!user) {
       user = await prisma.user.create({
         data: {
-          telegramId: Number(body.user.telegramId),
-          name: body.user.name || "Unknown",
+          telegramId: BigInt(body.user.telegramId), // 🔥 ВАЖНО
+          name: body.user.name,
         },
       });
     }
@@ -114,17 +114,17 @@ app.post("/orders", async (req: Request, res: Response) => {
     const order = await prisma.order.create({
       data: {
         userId: user.id,
-        total: Number(body.total) || 0,
+        total: body.total,
         status: "new",
 
         items: {
           create: body.items.map((item: any) => ({
-            productId: Number(item.productId) || 0,
-            name: item.name || "unknown",
-            size: item.size || "unknown",
-            color: item.color || "unknown",
-            quantity: Number(item.quantity) || 1,
-            price: Number(item.price) || 0,
+            productId: item.productId,
+            name: item.name,
+            size: item.size,
+            color: item.color,
+            quantity: item.quantity,
+            price: item.price,
           })),
         },
       },
@@ -133,11 +133,9 @@ app.post("/orders", async (req: Request, res: Response) => {
       },
     });
 
-    console.log("ORDER CREATED:", order); // 🔥 лог
-
     res.json(order);
   } catch (error) {
-    console.error("ORDER ERROR:", error); // 🔥 самое важное
+    console.error("ORDER ERROR FULL:", error); // 🔥 САМОЕ ВАЖНОЕ
     res.status(500).json({ error: "Ошибка при создании заказа" });
   }
 });
