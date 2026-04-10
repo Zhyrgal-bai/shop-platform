@@ -56,8 +56,8 @@ function sumStockOfSizes(sizes: { stock: number }[]): number {
   return sizes.reduce((acc, s) => acc + (Number(s.stock) || 0), 0);
 }
 
-/** Сумма остатков по всем размерам (плоская модель или сумма по вариантам). */
-export function getTotalStock(product: Product): number {
+/** Сумма `stock` по всем размерам без fallback (удобно для админки / аналитики). */
+export function getTotalStockSum(product: Product): number {
   if (product.sizes && product.sizes.length > 0) {
     return sumStockOfSizes(product.sizes);
   }
@@ -69,6 +69,14 @@ export function getTotalStock(product: Product): number {
     );
   }
 
+  return 0;
+}
+
+/** Сумма остатков по всем размерам (плоская модель или сумма по вариантам). */
+export function getTotalStock(product: Product): number {
+  const sum = getTotalStockSum(product);
+  if (sum > 0) return sum;
+  if (product.sizes?.length || product.variants?.length) return 0;
   return DEFAULT_SIZE_STOCK;
 }
 

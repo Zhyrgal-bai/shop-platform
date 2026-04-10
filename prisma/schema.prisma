@@ -26,6 +26,7 @@ model Product {
   price       Int
   image       String
   description String?
+  sold        Int       @default(0)
 
   variants    Variant[]
 }

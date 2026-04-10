@@ -2,181 +2,370 @@ import { useState } from "react";
 import { useAdminStore } from "../../store/admin.store";
 import type { Variant } from "../../types";
 
+const CATEGORY_OPTIONS = ["Худи", "Футболки", "Штаны"] as const;
+
+const SIZE_OPTIONS = ["S", "M", "L", "XL"] as const;
+type SizeOption = (typeof SIZE_OPTIONS)[number];
+
+type SizeRow = {
+  enabled: boolean;
+  stock: number | "";
+};
+
+type VariantDraft = {
+  id: string;
+  color: string;
+  sizes: Record<SizeOption, SizeRow>;
+};
+
+function newVariantId() {
+  return globalThis.crypto?.randomUUID?.() ?? `v-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createVariantDraft(): VariantDraft {
+  const sizes = {} as Record<SizeOption, SizeRow>;
+  for (const s of SIZE_OPTIONS) {
+    sizes[s] = { enabled: false, stock: "" };
+  }
+  return { id: newVariantId(), color: "", sizes };
+}
+
+function expandShortHex(hex: string): string | null {
+  if (/^#[0-9A-Fa-f]{3}$/.test(hex)) {
+    const r = hex[1];
+    const g = hex[2];
+    const b = hex[3];
+    return `#${r}${r}${g}${g}${b}${b}`.toUpperCase();
+  }
+  return null;
+}
+
+/** Returns normalized #RRGGBB or null if invalid. */
+function parseHexColor(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  const withHash = t.startsWith("#") ? t : `#${t}`;
+  if (/^#[0-9A-Fa-f]{6}$/.test(withHash)) {
+    return withHash.toUpperCase();
+  }
+  const expanded = expandShortHex(withHash);
+  if (expanded && /^#[0-9A-Fa-f]{6}$/.test(expanded)) return expanded;
+  return null;
+}
+
+function draftsToVariants(drafts: VariantDraft[]): Variant[] {
+  return drafts.map((d) => {
+    const color = parseHexColor(d.color) ?? d.color.trim();
+    const sizes = SIZE_OPTIONS.filter((sz) => d.sizes[sz].enabled).map((sz) => {
+      const st = d.sizes[sz].stock;
+      const stock = typeof st === "number" && !Number.isNaN(st) ? st : 0;
+      return { size: sz, stock };
+    });
+    return { color, sizes };
+  });
+}
+
 const ProductForm = () => {
   const { addProduct } = useAdminStore();
 
   const [name, setName] = useState("");
-  const [price, setPrice] = useState(0);
+  const [price, setPrice] = useState<number | "">("");
   const [image, setImage] = useState("");
-  const [category, setCategory] = useState("");
-  const [variants, setVariants] = useState<Variant[]>([]);
+  const [category, setCategory] = useState<string>(CATEGORY_OPTIONS[0]);
+  const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([
+    createVariantDraft(),
+  ]);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  const updateDraft = (id: string, patch: Partial<Pick<VariantDraft, "color">>) => {
+    setVariantDrafts((prev) =>
+      prev.map((v) => (v.id === id ? { ...v, ...patch } : v))
+    );
+  };
+
+  const setSizeEnabled = (variantId: string, size: SizeOption, enabled: boolean) => {
+    setVariantDrafts((prev) =>
+      prev.map((v) => {
+        if (v.id !== variantId) return v;
+        const next = { ...v.sizes[size], enabled };
+        if (!enabled) next.stock = "";
+        return {
+          ...v,
+          sizes: { ...v.sizes, [size]: next },
+        };
+      })
+    );
+  };
+
+  const setSizeStock = (variantId: string, size: SizeOption, stock: number | "") => {
+    setVariantDrafts((prev) =>
+      prev.map((v) =>
+        v.id === variantId
+          ? {
+              ...v,
+              sizes: {
+                ...v.sizes,
+                [size]: { ...v.sizes[size], stock },
+              },
+            }
+          : v
+      )
+    );
+  };
 
   const addVariant = () => {
-    setVariants([...variants, { color: "", sizes: [] }]);
+    setVariantDrafts((prev) => [...prev, createVariantDraft()]);
   };
 
-  const addSize = (vIndex: number) => {
-    const updated = [...variants];
-    updated[vIndex].sizes.push({ size: "", stock: 0 });
-    setVariants(updated);
-  };
-
-  const updateVariant = (i: number, value: string) => {
-    const updated = [...variants];
-    updated[i].color = value;
-    setVariants(updated);
-  };
-
-  const updateSize = (
-    vIndex: number,
-    sIndex: number,
-    key: "size" | "stock",
-    value: string | number
-  ) => {
-    const updated = [...variants];
-
-    if (key === "size") {
-      updated[vIndex].sizes[sIndex].size = value as string;
-    } else {
-      updated[vIndex].sizes[sIndex].stock = value as number;
-    }
-
-    setVariants(updated);
+  const removeVariant = (id: string) => {
+    setVariantDrafts((prev) =>
+      prev.length <= 1 ? prev : prev.filter((v) => v.id !== id)
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setFormError(null);
 
-    if (!name || !price || variants.length === 0) {
-      alert("Заполни все поля");
+    const priceNum = typeof price === "number" ? price : Number(price);
+    if (!name.trim() || !priceNum || priceNum <= 0) {
+      setFormError("Укажите название и цену больше нуля.");
       return;
     }
 
-    for (const v of variants) {
-      if (!v.color || v.sizes.length === 0) {
-        alert("Добавь цвет и размеры");
+    for (let i = 0; i < variantDrafts.length; i++) {
+      const d = variantDrafts[i];
+      const hex = parseHexColor(d.color);
+      if (!hex) {
+        setFormError(`Цвет ${i + 1}: введите корректный HEX (например #1a1a1a).`);
         return;
       }
-
-      for (const s of v.sizes) {
-        if (!s.size || s.stock <= 0) {
-          alert("Размер или stock неверный");
+      const enabled = SIZE_OPTIONS.filter((sz) => d.sizes[sz].enabled);
+      if (enabled.length === 0) {
+        setFormError(`Цвет ${i + 1}: выберите хотя бы один размер.`);
+        return;
+      }
+      for (const sz of enabled) {
+        const st = d.sizes[sz].stock;
+        const n = typeof st === "number" ? st : Number(st);
+        if (!Number.isFinite(n) || n <= 0) {
+          setFormError(`Цвет ${i + 1}: для размера ${sz} укажите количество больше нуля.`);
           return;
         }
       }
     }
 
+    const variants = draftsToVariants(variantDrafts);
+
     const data = {
-      name,
-      price,
-      image,
+      name: name.trim(),
+      price: priceNum,
+      image: image.trim(),
       category,
       description: "",
       variants,
     };
 
-    console.log("SENDING:", data);
-
     try {
       await addProduct(data);
-      alert("Товар добавлен ✅");
-
+      setFormError(null);
       setName("");
-      setPrice(0);
+      setPrice("");
       setImage("");
-      setCategory("");
-      setVariants([]);
+      setCategory(CATEGORY_OPTIONS[0]);
+      setVariantDrafts([createVariantDraft()]);
+      alert("Товар добавлен ✅");
     } catch (err) {
       console.error(err);
-      alert("Ошибка ❌");
+      setFormError("Не удалось сохранить товар. Проверьте сеть и попробуйте снова.");
     }
   };
 
   return (
     <form onSubmit={handleSubmit} className="admin-form">
-      <input
-        placeholder="Название"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        className="admin-input"
-      />
-
-      <input
-        type="number"
-        placeholder="Цена"
-        value={price}
-        onChange={(e) => setPrice(Number(e.target.value))}
-        className="admin-input"
-      />
-
-      <input
-        placeholder="URL изображения"
-        value={image}
-        onChange={(e) => setImage(e.target.value)}
-        className="admin-input"
-      />
-      {image.trim() && (
-        <img
-          src={image}
-          alt="Предпросмотр изображения товара"
-          className="image-preview"
-        />
+      {formError && (
+        <div className="admin-form-error" role="alert">
+          {formError}
+        </div>
       )}
 
-      <input
-        placeholder="Категория"
-        value={category}
-        onChange={(e) => setCategory(e.target.value)}
-        className="admin-input"
-      />
+      <div className="admin-form-section">
+        <label className="admin-field-label" htmlFor="pf-name">
+          Название
+        </label>
+        <input
+          id="pf-name"
+          placeholder="Название товара"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="admin-input"
+          autoComplete="off"
+        />
+      </div>
+
+      <div className="admin-form-section">
+        <label className="admin-field-label" htmlFor="pf-price">
+          Цена (сом)
+        </label>
+        <input
+          id="pf-price"
+          type="number"
+          inputMode="decimal"
+          min={0}
+          step={1}
+          placeholder="Цена"
+          value={price === "" ? "" : price}
+          onChange={(e) => {
+            const v = e.target.value;
+            setPrice(v === "" ? "" : Number(v));
+          }}
+          className="admin-input"
+        />
+      </div>
+
+      <div className="admin-form-section">
+        <label className="admin-field-label" htmlFor="pf-image">
+          URL изображения
+        </label>
+        <input
+          id="pf-image"
+          placeholder="https://…"
+          value={image}
+          onChange={(e) => setImage(e.target.value)}
+          className="admin-input"
+          inputMode="url"
+        />
+        {image.trim() && (
+          <img
+            src={image}
+            alt="Предпросмотр изображения товара"
+            className="image-preview"
+          />
+        )}
+      </div>
+
+      <div className="admin-form-section">
+        <label className="admin-field-label" htmlFor="pf-category">
+          Категория
+        </label>
+        <select
+          id="pf-category"
+          className="admin-select"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        >
+          {CATEGORY_OPTIONS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="admin-form-divider" />
+
+      <p className="admin-form-hint">Цвета и остатки по размерам (можно несколько вариантов)</p>
+
+      {variantDrafts.map((draft, index) => {
+        const previewHex = parseHexColor(draft.color);
+        return (
+          <div key={draft.id} className="admin-variant">
+            <div className="admin-variant-head">
+              <span className="admin-variant-title">Вариант {index + 1}</span>
+              {variantDrafts.length > 1 && (
+                <button
+                  type="button"
+                  className="admin-variant-remove"
+                  onClick={() => removeVariant(draft.id)}
+                  aria-label="Удалить вариант"
+                >
+                  Удалить
+                </button>
+              )}
+            </div>
+
+            <div className="admin-form-section">
+              <label className="admin-field-label" htmlFor={`pf-color-${draft.id}`}>
+                Цвет (HEX)
+              </label>
+              <div className="admin-color-row">
+                <div
+                  className="admin-color-swatch"
+                  style={{
+                    backgroundColor: previewHex ?? "rgba(255,255,255,0.06)",
+                  }}
+                  title={previewHex ?? "Нет цвета"}
+                />
+                <input
+                  id={`pf-color-${draft.id}`}
+                  placeholder="HEX цвет (#000000)"
+                  value={draft.color}
+                  onChange={(e) => updateDraft(draft.id, { color: e.target.value })}
+                  className="admin-input admin-input--grow"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+
+            <div className="admin-form-section">
+              <span className="admin-field-label">Размеры</span>
+              <div className="admin-sizes">
+                {SIZE_OPTIONS.map((size) => (
+                  <label key={size} className="admin-size-chip">
+                    <input
+                      type="checkbox"
+                      checked={draft.sizes[size].enabled}
+                      onChange={(e) =>
+                        setSizeEnabled(draft.id, size, e.target.checked)
+                      }
+                    />
+                    <span className="admin-size-chip-text">{size}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="admin-stock-block">
+              <span className="admin-field-label">Остаток по размеру</span>
+              {SIZE_OPTIONS.filter((sz) => draft.sizes[sz].enabled).length === 0 ? (
+                <p className="admin-stock-placeholder">Отметьте размеры выше</p>
+              ) : (
+                SIZE_OPTIONS.filter((sz) => draft.sizes[sz].enabled).map((size) => (
+                  <div key={size} className="admin-stock-row">
+                    <span className="admin-stock-size">{size}</span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      placeholder="Количество"
+                      value={
+                        draft.sizes[size].stock === ""
+                          ? ""
+                          : draft.sizes[size].stock
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setSizeStock(
+                          draft.id,
+                          size,
+                          v === "" ? "" : Number(v)
+                        );
+                      }}
+                      className="admin-input"
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
 
       <button type="button" onClick={addVariant} className="admin-secondary-btn">
-        + Цвет
+        + Добавить цвет
       </button>
 
-      {variants.map((v, i) => (
-        <div key={i} className="admin-variant">
-          <input
-            placeholder="Цвет"
-            value={v.color}
-            onChange={(e) => updateVariant(i, e.target.value)}
-            className="admin-input"
-          />
-
-          <button
-            type="button"
-            onClick={() => addSize(i)}
-            className="admin-secondary-btn"
-          >
-            + Размер
-          </button>
-
-          {v.sizes.map((s, si) => (
-            <div key={si} className="admin-size-row">
-              <input
-                placeholder="Размер"
-                value={s.size}
-                onChange={(e) =>
-                  updateSize(i, si, "size", e.target.value)
-                }
-                className="admin-input"
-              />
-
-              <input
-                type="number"
-                placeholder="Stock"
-                value={s.stock}
-                onChange={(e) =>
-                  updateSize(i, si, "stock", Number(e.target.value))
-                }
-                className="admin-input"
-              />
-            </div>
-          ))}
-        </div>
-      ))}
-
-      <button className="admin-submit-btn">
+      <button type="submit" className="admin-submit-btn">
         Добавить товар
       </button>
     </form>

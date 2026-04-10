@@ -23,17 +23,22 @@
   transform: scale(0.98);
 }
 
-.product-card--muted {
+.product-card.out {
   opacity: 0.55;
 }
 
-.product-card--muted:hover {
+.product-card.out:hover {
   transform: none;
   box-shadow: none;
 }
 
-.product-card--muted:hover .product-image-wrapper .image-slider img {
+.product-card.out:hover .product-image-wrapper .image-slide img {
   transform: none;
+}
+
+/* Слайдер и точки не кликаются, пока товар полностью не в наличии */
+.product-card.out .product-image-wrapper {
+  pointer-events: none;
 }
 
 .product-image-wrapper {
@@ -51,15 +56,22 @@
   will-change: transform;
 }
 
-.image-slider img {
+.image-slide {
+  flex: 0 0 calc(100% / var(--slide-count, 1));
+  height: 100%;
+  min-height: 0;
+  flex-shrink: 0;
+}
+
+.image-slide img {
+  width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  flex-shrink: 0;
   transition: transform 0.3s ease;
 }
 
-.product-card:hover .image-slider img {
+.product-card:hover .image-slide img {
   transform: scale(1.05);
 }
 

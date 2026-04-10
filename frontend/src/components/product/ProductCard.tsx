@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Product, ProductColor, Size } from "../../types";
 import { useCartStore } from "../../store/useCartStore";
-import { getNormalizedVariants, getPrimaryImage } from "../../utils/product";
+import {
+  getNormalizedVariants,
+  getPrimaryImage,
+  isOutOfStock,
+} from "../../utils/product";
 import "../ui/ProductCard.css";
 
 type Props = {
@@ -31,10 +35,7 @@ export default function ProductCard({ product, showToast }: Props) {
     return [{ size: "M", stock: 10 }];
   }, [product]);
 
-  const allOutOfStock = useMemo(
-    () => sizes.length > 0 && sizes.every((s) => s.stock === 0),
-    [sizes]
-  );
+  const outOfStock = isOutOfStock(product);
 
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(null);
@@ -90,7 +91,7 @@ export default function ProductCard({ product, showToast }: Props) {
   const quantity = cartItem?.quantity ?? 0;
 
   const upsertQuantity = (nextQuantity: number) => {
-    if (!selectedSize || allOutOfStock || lineColor === null) return;
+    if (!selectedSize || outOfStock || lineColor === null) return;
     if (selectedStock <= 0) return;
 
     if (cartItem) removeItem(cartItem);
@@ -109,7 +110,7 @@ export default function ProductCard({ product, showToast }: Props) {
   };
 
   const canAddToCart =
-    !allOutOfStock &&
+    !outOfStock &&
     selectedSize !== null &&
     selectedStock > 0 &&
     (!hasCustomColors || selectedColor !== null);
@@ -150,56 +151,45 @@ export default function ProductCard({ product, showToast }: Props) {
   };
 
   return (
-    <div
-      className={`product-card${allOutOfStock ? " product-card--muted" : ""}`}
-    >
+    <div className={`product-card${outOfStock ? " out" : ""}`}>
       <div
         className="product-image-wrapper"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
       >
+        {/* Instagram: шаг = currentIndex × (100% / n) ширины трека; строка «−index×100%» без деления сдвинула бы на n слайдов за раз */}
         <div
           className="image-slider"
-          style={{
-            transform: `translateX(-${(currentIndex * 100) / images.length}%)`,
-            width: `${images.length * 100}%`,
-          }}
+          style={
+            {
+              ["--slide-count" as string]: images.length,
+              width: "calc(var(--slide-count) * 100%)",
+              transform: `translateX(calc(-${currentIndex} * 100% / var(--slide-count)))`,
+            } as React.CSSProperties
+          }
         >
           {images.map((img, index) => (
-            <img
-              key={index}
-              src={img}
-              alt={index === 0 ? product.name : ""}
-              style={{ width: `${100 / images.length}%` }}
-            />
+            <div key={index} className="image-slide">
+              <img src={img} alt="" />
+            </div>
           ))}
         </div>
 
-        {images.length > 1 && (
-          <div className="dots">
-            {images.map((_, i) => (
-              <span
-                key={i}
-                role="button"
-                tabIndex={0}
-                className={i === currentIndex ? "active" : ""}
-                onClick={() => setCurrentIndex(i)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
-                    setCurrentIndex(i);
-                  }
-                }}
-              />
-            ))}
-          </div>
-        )}
+        <div className="dots">
+          {images.map((_, i) => (
+            <span
+              key={i}
+              className={i === currentIndex ? "active" : ""}
+              onClick={() => setCurrentIndex(i)}
+            />
+          ))}
+        </div>
       </div>
 
       <div className="product-info">
         <h3 className="product-title">{product.name}</h3>
 
-        {allOutOfStock ? (
+        {outOfStock ? (
           <div className="out-of-stock">НЕТ В НАЛИЧИИ</div>
         ) : (
           <>
@@ -244,7 +234,7 @@ export default function ProductCard({ product, showToast }: Props) {
               <button
                 className="product-add-btn"
                 onClick={handleAddToCart}
-                disabled={!canAddToCart}
+                disabled={outOfStock || !canAddToCart}
                 type="button"
               >
                 Добавить
@@ -255,7 +245,9 @@ export default function ProductCard({ product, showToast }: Props) {
                   className="product-action-btn"
                   onClick={handleDecrement}
                   disabled={
-                    !selectedSize || allOutOfStock || lineColor === null
+                    outOfStock ||
+                    !selectedSize ||
+                    lineColor === null
                   }
                   type="button"
                   aria-label="Уменьшить"
@@ -269,8 +261,8 @@ export default function ProductCard({ product, showToast }: Props) {
                   className="product-action-btn"
                   onClick={handleIncrement}
                   disabled={
+                    outOfStock ||
                     !selectedSize ||
-                    allOutOfStock ||
                     lineColor === null ||
                     atMaxQty
                   }

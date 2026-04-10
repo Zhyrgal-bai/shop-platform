@@ -90,47 +90,103 @@ app.get("/products", async (req: Request, res: Response) => {
 
 // ================== CREATE ORDER ==================
 app.post("/orders", async (req: Request, res: Response) => {
+  const body = req.body;
+
+  console.log("ORDER BODY:", body);
+
+  if (!body.user || !body.items || !body.total) {
+    return res.status(400).json({ error: "Неверные данные заказа" });
+  }
+
+  const items = body.items as Array<{
+    productId: number;
+    name: string;
+    size: string;
+    color: string;
+    quantity: number;
+    price: number;
+  }>;
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: "Корзина пуста" });
+  }
+
   try {
-    const body = req.body;
+    const { order, user } = await prisma.$transaction(async (tx) => {
+      let user = await tx.user.findUnique({
+        where: { telegramId: BigInt(body.user.telegramId) },
+      });
 
-    console.log("ORDER BODY:", body);
+      if (!user) {
+        user = await tx.user.create({
+          data: {
+            telegramId: BigInt(body.user.telegramId),
+            name: body.user.name,
+          },
+        });
+      }
 
-    if (!body.user || !body.items || !body.total) {
-      return res.status(400).json({ error: "Неверные данные заказа" });
-    }
+      for (const item of items) {
+        const productId = Number(item.productId);
+        const qty = Number(item.quantity);
+        if (!productId || Number.isNaN(qty) || qty < 1) {
+          throw new Error("INVALID_ITEM");
+        }
 
-    let user = await prisma.user.findUnique({
-      where: { telegramId: BigInt(body.user.telegramId) },
-    });
+        const sizeRow = await tx.size.findFirst({
+          where: {
+            size: String(item.size),
+            variant: {
+              productId,
+              color: String(item.color),
+            },
+          },
+        });
 
-    if (!user) {
-      user = await prisma.user.create({
+        if (!sizeRow) {
+          throw new Error("NOT_FOUND");
+        }
+
+        const updated = await tx.size.updateMany({
+          where: {
+            id: sizeRow.id,
+            stock: { gte: qty },
+          },
+          data: { stock: { decrement: qty } },
+        });
+
+        if (updated.count !== 1) {
+          throw new Error("OUT_OF_STOCK");
+        }
+
+        await tx.product.update({
+          where: { id: productId },
+          data: { sold: { increment: qty } },
+        });
+      }
+
+      const order = await tx.order.create({
         data: {
-          telegramId: BigInt(body.user.telegramId),
-          name: body.user.name,
+          userId: user.id,
+          total: Number(body.total),
+          status: "new",
+          items: {
+            create: items.map((item) => ({
+              productId: Number(item.productId),
+              name: item.name,
+              size: String(item.size),
+              color: String(item.color),
+              quantity: Number(item.quantity),
+              price: Number(item.price),
+            })),
+          },
+        },
+        include: {
+          items: true,
         },
       });
-    }
 
-    const order = await prisma.order.create({
-      data: {
-        userId: user.id,
-        total: Number(body.total),
-        status: "new",
-        items: {
-          create: body.items.map((item: any) => ({
-            productId: Number(item.productId),
-            name: item.name,
-            size: item.size,
-            color: item.color,
-            quantity: Number(item.quantity),
-            price: Number(item.price),
-          })),
-        },
-      },
-      include: {
-        items: true,
-      },
+      return { order, user };
     });
 
     console.log("ORDER CREATED:", order);
@@ -186,6 +242,18 @@ ${order.items
 
     res.json(order);
   } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+    if (code === "INVALID_ITEM") {
+      return res.status(400).json({ error: "Неверные данные позиции в заказе" });
+    }
+    if (code === "NOT_FOUND") {
+      return res
+        .status(400)
+        .json({ error: "Товар недоступен (цвет или размер не найден)" });
+    }
+    if (code === "OUT_OF_STOCK") {
+      return res.status(400).json({ error: "Недостаточно товара на складе" });
+    }
     console.error("ORDER ERROR FULL:", error);
     res.status(500).json({ error: "Ошибка при создании заказа" });
   }
