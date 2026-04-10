@@ -2,9 +2,11 @@ import HomePage from "./pages/HomePage";
 import CartPage from "./pages/CartPage";
 import CheckoutPage from "./pages/CheckoutPage";
 import AdminPage from "./pages/AdminPage";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useCartStore } from "./store/useCartStore";
+import { checkIsAdmin } from "./utils/isAdmin";
 import "./App.css";
+import "./components/ui/Admin.css";
 import Header from "./components/layout/Header";
 import SideMenu from "./components/layout/SideMenu";
 
@@ -13,6 +15,17 @@ export default function App() {
     "home" | "cart" | "checkout" | "admin"
   >("home");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isUserAdmin, setIsUserAdmin] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    checkIsAdmin().then((ok) => {
+      if (!cancelled) setIsUserAdmin(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const items = useCartStore((state) => state.items);
   const totalQuantity = items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
 
@@ -39,6 +52,7 @@ export default function App() {
         open={isMenuOpen}
         onClose={handleMenuClose}
         onNav={handleNav}
+        showAdminLink={isUserAdmin === true}
       />
 
       <div className="content">
@@ -52,7 +66,17 @@ export default function App() {
             onOrderSuccess={() => setPage("home")}
           />
         )}
-        {page === "admin" && <AdminPage />}
+        {page === "admin" && isUserAdmin === true && <AdminPage />}
+        {page === "admin" && isUserAdmin === false && (
+          <div className="admin-page">
+            <div className="no-access">Нет доступа</div>
+          </div>
+        )}
+        {page === "admin" && isUserAdmin === null && (
+          <div className="admin-page">
+            <p className="admin-loading">Проверка доступа…</p>
+          </div>
+        )}
       </div>
 
       {page !== "checkout" && (

@@ -1,9 +1,9 @@
 import express from "express";
 import type { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
-import { bot } from "../bot/bot.js";
+import { Prisma, PrismaClient } from "@prisma/client";
 import cors from "cors";
 import dotenv from "dotenv";
+import { isAdmin } from "./adminAuth.js";
 
 dotenv.config(); // ✅ ОБЯЗАТЕЛЬНО
 
@@ -18,10 +18,20 @@ app.get("/", (req: Request, res: Response) => {
   res.send("Server is working 🚀");
 });
 
+// ================== CHECK ADMIN ==================
+app.post("/check-admin", (req: Request, res: Response) => {
+  const userId = req.body?.userId;
+  res.json({ isAdmin: isAdmin(userId) });
+});
+
 // ================== CREATE PRODUCT ==================
 app.post("/products", async (req: Request, res: Response) => {
   try {
-    const { name, price, image, description, variants } = req.body;
+    const { userId, name, price, image, description, variants } = req.body;
+
+    if (!isAdmin(userId)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
 
     if (!name || !price || !image || !variants || variants.length === 0) {
       return res.status(400).json({ error: "Неверные данные" });
@@ -65,6 +75,96 @@ app.post("/products", async (req: Request, res: Response) => {
   } catch (e) {
     console.error("PRISMA ERROR:", e);
     res.status(500).json({ error: "Ошибка создания товара" });
+  }
+});
+
+type SendOrderItem = { name: string; size: string; quantity: number };
+
+// ================== SEND ORDER (Telegram) ==================
+app.post("/send-order", async (req: Request, res: Response) => {
+  const BOT_TOKEN = process.env.BOT_TOKEN;
+  const CHAT_ID = process.env.CHAT_ID;
+
+  if (!BOT_TOKEN || !CHAT_ID) {
+    return res.status(500).json({
+      error: "Telegram не настроен: задайте BOT_TOKEN и CHAT_ID в окружении",
+    });
+  }
+
+  try {
+    const body = req.body as {
+      name?: string;
+      phone?: string;
+      address?: string;
+      items?: SendOrderItem[];
+      total?: number;
+    };
+
+    const name = String(body.name ?? "").trim() || "—";
+    const phone = String(body.phone ?? "").trim() || "—";
+    const address = String(body.address ?? "").trim() || "—";
+    const items = Array.isArray(body.items) ? body.items : [];
+    const total =
+      typeof body.total === "number" && !Number.isNaN(body.total)
+        ? body.total
+        : Number(body.total);
+
+    if (items.length === 0 || !Number.isFinite(total)) {
+      return res.status(400).json({
+        error: "Нужны поля items (непустой массив) и total",
+      });
+    }
+
+    for (const i of items) {
+      if (!i?.name || !i?.size || !Number.isFinite(Number(i.quantity))) {
+        return res.status(400).json({
+          error: "Каждый товар: name, size, quantity",
+        });
+      }
+    }
+
+    const message = `
+🛒 НОВЫЙ ЗАКАЗ
+
+👤 Имя: ${name}
+📞 Телефон: ${phone}
+📍 Адрес: ${address}
+
+📦 Товары:
+${items.map((i) => `• ${i.name} (${i.size}) x${i.quantity}`).join("\n")}
+
+💰 Итого: ${total} сом
+`.trim();
+
+    const tgRes = await fetch(
+      `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: CHAT_ID,
+          text: message,
+        }),
+      }
+    );
+
+    const tgData = (await tgRes.json().catch(() => ({}))) as {
+      ok?: boolean;
+      description?: string;
+    };
+
+    if (!tgRes.ok || tgData.ok === false) {
+      console.error("Telegram sendMessage failed:", tgRes.status, tgData);
+      return res.status(502).json({
+        error: "Telegram не принял сообщение",
+        details: tgData.description ?? tgRes.statusText,
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("SEND-ORDER ERROR:", err);
+    res.status(500).json({ error: "Ошибка при отправке заказа в Telegram" });
   }
 });
 
@@ -159,10 +259,9 @@ app.post("/orders", async (req: Request, res: Response) => {
           throw new Error("OUT_OF_STOCK");
         }
 
-        await tx.product.update({
-          where: { id: productId },
-          data: { sold: { increment: qty } },
-        });
+        await tx.$executeRaw(
+          Prisma.sql`UPDATE "Product" SET "sold" = "sold" + ${qty} WHERE "id" = ${productId}`
+        );
       }
 
       const order = await tx.order.create({
@@ -191,55 +290,6 @@ app.post("/orders", async (req: Request, res: Response) => {
 
     console.log("ORDER CREATED:", order);
 
-    // ================== 🔥 TELEGRAM NOTIFICATION ==================
-    try {
-      console.log("ADMIN_ID:", process.env.ADMIN_ID);
-
-      const message = `
-🛒 <b>Новый заказ</b>
-
-👤 <b>${user.name || "Без имени"}</b>
-🆔 <code>${user.telegramId}</code>
-
-💰 <b>${order.total} сом</b>
-
-📦 <b>Товары:</b>
-${order.items
-  .map(
-    (i) =>
-      `• ${i.name} (${i.color}, ${i.size}) x${i.quantity}`
-  )
-  .join("\n")}
-      `;
-
-      await bot.telegram.sendMessage(
-        Number(process.env.ADMIN_ID),
-        message,
-        {
-          parse_mode: "HTML",
-          reply_markup: {
-            inline_keyboard: [
-              [
-                {
-                  text: "✅ Принять",
-                  callback_data: `order_accept_${order.id}`,
-                },
-                {
-                  text: "❌ Завершить",
-                  callback_data: `order_done_${order.id}`,
-                },
-              ],
-            ],
-          },
-        }
-      );
-
-      console.log("✅ TELEGRAM SENT");
-    } catch (err) {
-      console.error("❌ TELEGRAM ERROR:", err);
-    }
-    // ============================================================
-
     res.json(order);
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
@@ -256,6 +306,84 @@ ${order.items
     }
     console.error("ORDER ERROR FULL:", error);
     res.status(500).json({ error: "Ошибка при создании заказа" });
+  }
+});
+
+// ================== UPDATE PRODUCT ==================
+app.put("/products/:id", async (req: Request, res: Response) => {
+  try {
+    const { userId, name, price, image, description } = req.body;
+
+    if (!isAdmin(userId)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Неверный id" });
+    }
+
+    if (name === undefined && price === undefined && image === undefined && description === undefined) {
+      return res.status(400).json({ error: "Нет полей для обновления" });
+    }
+
+    const data: {
+      name?: string;
+      price?: number;
+      image?: string;
+      description?: string | null;
+    } = {};
+    if (name !== undefined) data.name = String(name);
+    if (price !== undefined) data.price = Number(price);
+    if (image !== undefined) data.image = String(image);
+    if (description !== undefined) data.description = description === null ? null : String(description);
+
+    const product = await prisma.product.update({
+      where: { id },
+      data,
+      include: {
+        variants: { include: { sizes: true } },
+      },
+    });
+
+    res.json(product);
+  } catch (e) {
+    console.error("UPDATE PRODUCT ERROR:", e);
+    res.status(500).json({ error: "Ошибка обновления товара" });
+  }
+});
+
+// ================== DELETE PRODUCT ==================
+app.delete("/products/:id", async (req: Request, res: Response) => {
+  try {
+    const userId = req.body?.userId;
+
+    if (!isAdmin(userId)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Неверный id" });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      const variants = await tx.variant.findMany({
+        where: { productId: id },
+        select: { id: true },
+      });
+      const variantIds = variants.map((v) => v.id);
+      if (variantIds.length > 0) {
+        await tx.size.deleteMany({ where: { variantId: { in: variantIds } } });
+      }
+      await tx.variant.deleteMany({ where: { productId: id } });
+      await tx.product.delete({ where: { id } });
+    });
+
+    res.status(204).send();
+  } catch (e) {
+    console.error("DELETE PRODUCT ERROR:", e);
+    res.status(500).json({ error: "Ошибка удаления товара" });
   }
 });
 

@@ -4,9 +4,16 @@ type SideMenuProps = {
   open: boolean;
   onClose: () => void;
   onNav: (page: "home" | "cart" | "checkout" | "admin") => void;
+  /** Пункт «Админка» только для Telegram ID из ADMIN_IDS на сервере. */
+  showAdminLink?: boolean;
 };
 
-export default function SideMenu({ open, onClose, onNav }: SideMenuProps) {
+export default function SideMenu({
+  open,
+  onClose,
+  onNav,
+  showAdminLink = false,
+}: SideMenuProps) {
   return (
     <>
       <div
@@ -17,7 +24,11 @@ export default function SideMenu({ open, onClose, onNav }: SideMenuProps) {
         <button onClick={() => onNav("home")}>Главная</button>
         <button onClick={() => onNav("cart")}>Корзина</button>
         <button onClick={() => onNav("checkout")}>Оформление</button>
-        <button onClick={() => onNav("admin")}>Админка</button>
+        {showAdminLink && (
+          <button type="button" onClick={() => onNav("admin")}>
+            Админка
+          </button>
+        )}
       </nav>
     </>
   );

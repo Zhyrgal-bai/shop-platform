@@ -1,7 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import { useCartStore } from "../store/useCartStore";
-import { api } from "../services/api";
+import { api, API_BASE_URL } from "../services/api";
 import { getTelegramUser } from "../utils/telegram";
 import "../components/ui/CheckoutPage.css";
 
@@ -45,12 +45,24 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
 
     const tg = getTelegramUser();
 
+    const orderData = {
+      name: name.trim(),
+      phone: phone.trim(),
+      address: address.trim(),
+      items: items.map((i) => ({
+        name: i.name,
+        size: i.size,
+        quantity: i.quantity,
+      })),
+      total: totalPrice,
+    };
+
     setSubmitting(true);
     try {
       await api.post("/orders", {
         user: {
           telegramId: tg?.id ?? 0,
-          name: name.trim() || tg?.first_name || "Гость",
+          name: orderData.name || tg?.first_name || "Гость",
         },
         items: items.map((i) => ({
           productId: i.productId,
@@ -62,10 +74,32 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
         })),
         total: totalPrice,
         deliveryType,
-        address: address.trim(),
+        address: orderData.address,
         promo: promo.trim(),
         comment: comment.trim(),
       });
+
+      const sendUrl = `${API_BASE_URL.replace(/\/$/, "")}/send-order`;
+      const res = await fetch(sendUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(orderData),
+      });
+
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+      };
+
+      if (!res.ok) {
+        alert(
+          payload.error ??
+            "Заказ сохранён, но уведомление в Telegram не отправилось."
+        );
+      } else {
+        alert("Заказ отправлен");
+      }
 
       clearCart();
       setName("");

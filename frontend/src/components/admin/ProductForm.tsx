@@ -1,4 +1,5 @@
 import { useState } from "react";
+import axios from "axios";
 import { useAdminStore } from "../../store/admin.store";
 import type { Variant } from "../../types";
 
@@ -177,6 +178,14 @@ const ProductForm = () => {
       alert("Товар добавлен ✅");
     } catch (err) {
       console.error(err);
+      if (axios.isAxiosError(err) && err.response?.status === 403) {
+        setFormError("Доступ запрещён");
+        return;
+      }
+      if (err instanceof Error && err.message.includes("Telegram")) {
+        setFormError(err.message);
+        return;
+      }
       setFormError("Не удалось сохранить товар. Проверьте сеть и попробуйте снова.");
     }
   };

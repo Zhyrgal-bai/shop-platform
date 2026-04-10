@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import axios from "axios";
 import { useAdminStore } from "../../store/admin.store";
 import { getTotalStockSum } from "../../utils/product";
 
@@ -36,7 +37,17 @@ const ProductList = () => {
 
             <button
               type="button"
-              onClick={() => deleteProduct(p.id!)}
+              onClick={async () => {
+                try {
+                  await deleteProduct(p.id!);
+                } catch (e) {
+                  if (axios.isAxiosError(e) && e.response?.status === 403) {
+                    alert("Access denied");
+                  } else {
+                    alert("Не удалось удалить товар");
+                  }
+                }
+              }}
               className="delete"
             >
               Удалить

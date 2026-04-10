@@ -365,3 +365,10 @@
   color: #ff4d4d;
   font-weight: 700;
 }
+
+.admin-loading {
+  margin: 24px 12px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 14px;
+}

@@ -1,11 +1,16 @@
+import { api } from "../services/api";
 import { getTelegramUser } from "./telegram";
 
-export const isAdmin = () => {
-  const user = getTelegramUser();
-  const ADMIN_ID = import.meta.env.VITE_ADMIN_ID;
-
-  console.log("USER:", user?.id);
-  console.log("ADMIN_ID:", ADMIN_ID);
-
-  return String(user?.id) === String(ADMIN_ID);
-};
+/** Проверка по списку ADMIN_IDS на сервере (POST /check-admin). */
+export async function checkIsAdmin(): Promise<boolean> {
+  const u = getTelegramUser();
+  if (!u?.id) return false;
+  try {
+    const res = await api.post<{ isAdmin: boolean }>("/check-admin", {
+      userId: u.id,
+    });
+    return Boolean(res.data?.isAdmin);
+  } catch {
+    return false;
+  }
+}
