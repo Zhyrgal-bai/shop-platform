@@ -2,18 +2,23 @@ import { useEffect, useMemo, useState } from "react";
 import { api } from "../services/api";
 import type { Product } from "../types";
 import ProductGrid from "../components/product/ProductGrid";
+import Toast from "../components/ui/Toast";
 import "../components/ui/HomePage.css";
-import "../components/ui/Toast.css";
 
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [toast, setToast] = useState("");
+  const [isToastVisible, setIsToastVisible] = useState(false);
   const [activeCategory, setActiveCategory] = useState("ВСЕ");
   const [searchQuery, setSearchQuery] = useState("");
 
   const showToast = (message: string) => {
     setToast(message);
-    setTimeout(() => setToast(""), 2500);
+    setIsToastVisible(true);
+    setTimeout(() => {
+      setIsToastVisible(false);
+      setToast("");
+    }, 2000);
   };
 
   useEffect(() => {
@@ -80,7 +85,7 @@ export default function HomePage() {
         ))}
       </div>
       <ProductGrid products={filteredProducts} showToast={showToast} />
-      {toast && <div className="toast">{toast}</div>}
+      <Toast message={toast} visible={isToastVisible} />
     </div>
   );
 }
