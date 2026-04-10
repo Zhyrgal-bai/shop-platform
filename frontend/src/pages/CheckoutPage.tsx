@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { useCartStore } from "../store/useCartStore";
 import { api, API_BASE_URL } from "../services/api";
-import { getTelegramUser } from "../utils/telegram";
+import { getTelegramUser, getTelegramWebAppUserId } from "../utils/telegram";
 import "../components/ui/CheckoutPage.css";
 
 type Props = {
@@ -105,6 +105,7 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
     }
 
     const tg = getTelegramUser();
+    const userId = getTelegramWebAppUserId() ?? tg?.id;
     const promoCode = promo.trim();
 
     let payTotal = totalPrice;
@@ -131,6 +132,7 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
     setSubmitting(true);
     try {
       await api.post("/orders", {
+        ...(userId != null ? { userId } : {}),
         user: {
           telegramId: tg?.id ?? 0,
           name: orderData.name || tg?.first_name || "Гость",
@@ -159,6 +161,7 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          ...(userId != null ? { userId } : {}),
           name: orderData.name,
           phone: orderData.phone,
           address: orderData.address,

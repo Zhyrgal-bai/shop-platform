@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import { Prisma, PrismaClient } from "@prisma/client";
 import cors from "cors";
 import dotenv from "dotenv";
-import { isAdmin } from "./adminAuth.js";
+import { adminIdsIncludes, requireAdmin } from "./adminAuth.js";
 import {
   createMemoryOrder,
   getMemoryOrder,
@@ -94,25 +94,22 @@ app.get("/", (req: Request, res: Response) => {
 // ================== CHECK ADMIN ==================
 app.post("/check-admin", (req: Request, res: Response) => {
   const { userId } = req.body as { userId?: unknown };
-  const isAdminUser = isAdmin(userId);
-  res.json({ isAdmin: isAdminUser });
+  res.json({ isAdmin: adminIdsIncludes(userId) });
 });
 
 // ================== PAYMENT DETAILS (in-memory) ==================
-app.get("/payment", (_req: Request, res: Response) => {
+app.post("/payment/list", (req: Request, res: Response) => {
+  if (!requireAdmin(req, res)) return;
   res.json(listPaymentDetails());
 });
 
 app.post("/payment", (req: Request, res: Response) => {
-  const { userId, type, value } = req.body as {
-    userId?: unknown;
+  if (!requireAdmin(req, res)) return;
+
+  const { type, value } = req.body as {
     type?: string;
     value?: string;
   };
-
-  if (!isAdmin(userId)) {
-    return res.status(403).json({ message: "Access denied" });
-  }
 
   const t = String(type ?? "").trim();
   const v = String(value ?? "").trim();
@@ -125,11 +122,7 @@ app.post("/payment", (req: Request, res: Response) => {
 });
 
 app.delete("/payment/:id", (req: Request, res: Response) => {
-  const { userId } = req.body as { userId?: unknown };
-
-  if (!isAdmin(userId)) {
-    return res.status(403).json({ message: "Access denied" });
-  }
+  if (!requireAdmin(req, res)) return;
 
   const id = Number(req.params.id);
   if (!Number.isFinite(id)) {
@@ -164,25 +157,19 @@ app.post("/promo/apply", (req: Request, res: Response) => {
   }
 });
 
-app.get("/promo", (req: Request, res: Response) => {
-  const userId = req.query.userId;
-  if (!isAdmin(userId)) {
-    return res.status(403).json({ message: "Access denied" });
-  }
+app.post("/promo/list", (req: Request, res: Response) => {
+  if (!requireAdmin(req, res)) return;
   res.json(listPromoRecords());
 });
 
 app.post("/promo", (req: Request, res: Response) => {
-  const { userId, code, discount, maxUses } = req.body as {
-    userId?: unknown;
+  if (!requireAdmin(req, res)) return;
+
+  const { code, discount, maxUses } = req.body as {
     code?: unknown;
     discount?: unknown;
     maxUses?: unknown;
   };
-
-  if (!isAdmin(userId)) {
-    return res.status(403).json({ message: "Access denied" });
-  }
 
   try {
     const row = addPromoRecord(
@@ -210,11 +197,7 @@ app.post("/promo", (req: Request, res: Response) => {
 });
 
 app.delete("/promo/:code", (req: Request, res: Response) => {
-  const { userId } = req.body as { userId?: unknown };
-
-  if (!isAdmin(userId)) {
-    return res.status(403).json({ message: "Access denied" });
-  }
+  if (!requireAdmin(req, res)) return;
 
   const codeParam = req.params.code;
   const encoded =
@@ -234,11 +217,9 @@ app.delete("/promo/:code", (req: Request, res: Response) => {
 // ================== CREATE PRODUCT ==================
 app.post("/products", async (req: Request, res: Response) => {
   try {
-    const { userId, name, price, image, description, variants } = req.body;
+    if (!requireAdmin(req, res)) return;
 
-    if (!isAdmin(userId)) {
-      return res.status(403).json({ message: "Access denied" });
-    }
+    const { name, price, image, description, variants } = req.body;
 
     if (!name || !price || !image || !variants || variants.length === 0) {
       return res.status(400).json({ error: "Неверные данные" });
@@ -419,15 +400,12 @@ app.get("/order/:id", (req: Request, res: Response) => {
 });
 
 app.post("/order/status", (req: Request, res: Response) => {
-  const { id, status, userId } = req.body as {
+  if (!requireAdmin(req, res)) return;
+
+  const { id, status } = req.body as {
     id?: number;
     status?: string;
-    userId?: unknown;
   };
-
-  if (!isAdmin(userId)) {
-    return res.status(403).json({ message: "Access denied" });
-  }
 
   const orderId = Number(id);
   if (!Number.isFinite(orderId) || !status || !isValidOrderStatus(status)) {
@@ -441,12 +419,8 @@ app.post("/order/status", (req: Request, res: Response) => {
   res.json(updated);
 });
 
-app.get("/analytics", (req: Request, res: Response) => {
-  const q = req.query.userId;
-  const userId = Array.isArray(q) ? q[0] : q;
-  if (!isAdmin(userId)) {
-    return res.status(403).json({ message: "Access denied" });
-  }
+app.post("/analytics", (req: Request, res: Response) => {
+  if (!requireAdmin(req, res)) return;
   const orders = listMemoryOrders();
   const totalOrders = orders.length;
   const totalRevenue = orders
@@ -469,13 +443,29 @@ function orderStatusRu(status: string): string {
   return map[key] ?? status;
 }
 
-// ================== GET ORDERS (admin, Prisma) ==================
-app.get("/orders", async (req: Request, res: Response) => {
-  const q = req.query.userId;
-  const userId = Array.isArray(q) ? q[0] : q;
-  if (!isAdmin(userId)) {
-    return res.status(403).json({ message: "Access denied" });
+// ================== GET PRODUCTS ==================
+app.get("/products", async (req: Request, res: Response) => {
+  try {
+    const products = await prisma.product.findMany({
+      include: {
+        variants: {
+          include: {
+            sizes: true,
+          },
+        },
+      },
+    });
+
+    res.json(products);
+  } catch (error) {
+    console.error("GET PRODUCTS ERROR:", error);
+    res.status(500).json({ error: "Ошибка получения товаров" });
   }
+});
+
+// ================== LIST ORDERS (admin, Prisma) ==================
+app.post("/orders/list", async (req: Request, res: Response) => {
+  if (!requireAdmin(req, res)) return;
   try {
     const rows = await prisma.order.findMany({
       include: { user: true },
@@ -495,28 +485,8 @@ app.get("/orders", async (req: Request, res: Response) => {
     });
     res.json(orders);
   } catch (e) {
-    console.error("GET ORDERS ERROR:", e);
+    console.error("LIST ORDERS ERROR:", e);
     res.status(500).json({ error: "Ошибка загрузки заказов" });
-  }
-});
-
-// ================== GET PRODUCTS ==================
-app.get("/products", async (req: Request, res: Response) => {
-  try {
-    const products = await prisma.product.findMany({
-      include: {
-        variants: {
-          include: {
-            sizes: true,
-          },
-        },
-      },
-    });
-
-    res.json(products);
-  } catch (error) {
-    console.error("GET PRODUCTS ERROR:", error);
-    res.status(500).json({ error: "Ошибка получения товаров" });
   }
 });
 
@@ -657,11 +627,9 @@ app.post("/orders", async (req: Request, res: Response) => {
 // ================== UPDATE PRODUCT ==================
 app.put("/products/:id", async (req: Request, res: Response) => {
   try {
-    const { userId, name, price, image, description } = req.body;
+    if (!requireAdmin(req, res)) return;
 
-    if (!isAdmin(userId)) {
-      return res.status(403).json({ message: "Access denied" });
-    }
+    const { name, price, image, description } = req.body;
 
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
@@ -701,11 +669,7 @@ app.put("/products/:id", async (req: Request, res: Response) => {
 // ================== DELETE PRODUCT ==================
 app.delete("/products/:id", async (req: Request, res: Response) => {
   try {
-    const userId = req.body?.userId;
-
-    if (!isAdmin(userId)) {
-      return res.status(403).json({ message: "Access denied" });
-    }
+    if (!requireAdmin(req, res)) return;
 
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {

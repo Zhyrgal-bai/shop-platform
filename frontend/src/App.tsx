@@ -10,6 +10,7 @@ import "./components/ui/Admin.css";
 import Header from "./components/layout/Header";
 import SideMenu from "./components/layout/SideMenu";
 import FloatingCart from "./components/layout/FloatingCart";
+import { getTelegramWebAppUserId } from "./utils/telegram";
 
 export default function App() {
   const [page, setPage] = useState<
@@ -17,9 +18,7 @@ export default function App() {
   >("home");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  // @ts-expect-error Telegram WebApp
-  const tg = typeof window !== "undefined" ? window.Telegram?.WebApp : undefined;
-  const userId = tg?.initDataUnsafe?.user?.id;
+  const userId = getTelegramWebAppUserId();
   const ADMIN_ID = Number(import.meta.env.VITE_ADMIN_ID);
   const isAdmin = userId === ADMIN_ID;
 

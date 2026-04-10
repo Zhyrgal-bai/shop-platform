@@ -1,13 +1,14 @@
 import { api } from "./api";
 import type { Product } from "../types";
-import { getTelegramUser } from "../utils/telegram";
+import { getTelegramWebAppUserId } from "../utils/telegram";
 
-function requireTelegramUserId(): number {
-  const id = getTelegramUser()?.id;
-  if (id == null) {
+/** userId из window.Telegram.WebApp.initDataUnsafe.user.id — для всех admin-запросов. */
+function requireAdminUserId(): number {
+  const userId = getTelegramWebAppUserId();
+  if (userId == null) {
     throw new Error("Откройте приложение в Telegram");
   }
-  return id;
+  return userId;
 }
 
 export type AdminPaymentDetail = {
@@ -46,7 +47,7 @@ export const adminService = {
   },
 
   async createProduct(data: Product): Promise<Product> {
-    const userId = requireTelegramUserId();
+    const userId = requireAdminUserId();
     try {
       const res = await api.post<Product>("/products", { ...data, userId });
       console.log("CREATED:", res.data);
@@ -60,7 +61,7 @@ export const adminService = {
   },
 
   async deleteProduct(id: number): Promise<void> {
-    const userId = requireTelegramUserId();
+    const userId = requireAdminUserId();
     await api.delete(`/products/${id}`, { data: { userId } });
   },
 
@@ -68,7 +69,7 @@ export const adminService = {
     id: number,
     patch: Partial<Pick<Product, "name" | "price" | "image" | "description">>
   ): Promise<Product> {
-    const userId = requireTelegramUserId();
+    const userId = requireAdminUserId();
     const res = await api.put<Product>(`/products/${id}`, {
       ...patch,
       userId,
@@ -77,7 +78,10 @@ export const adminService = {
   },
 
   async listPaymentDetails(): Promise<AdminPaymentDetail[]> {
-    const res = await api.get<AdminPaymentDetail[]>("/payment");
+    const userId = requireAdminUserId();
+    const res = await api.post<AdminPaymentDetail[]>("/payment/list", {
+      userId,
+    });
     return res.data ?? [];
   },
 
@@ -85,7 +89,7 @@ export const adminService = {
     type: string,
     value: string
   ): Promise<AdminPaymentDetail> {
-    const userId = requireTelegramUserId();
+    const userId = requireAdminUserId();
     const res = await api.post<AdminPaymentDetail>("/payment", {
       type,
       value,
@@ -95,14 +99,14 @@ export const adminService = {
   },
 
   async deletePaymentDetail(id: number): Promise<void> {
-    const userId = requireTelegramUserId();
+    const userId = requireAdminUserId();
     await api.delete(`/payment/${id}`, { data: { userId } });
   },
 
   async listPromos(): Promise<AdminPromoRecord[]> {
-    const userId = requireTelegramUserId();
-    const res = await api.get<AdminPromoRecord[]>("/promo", {
-      params: { userId },
+    const userId = requireAdminUserId();
+    const res = await api.post<AdminPromoRecord[]>("/promo/list", {
+      userId,
     });
     return res.data ?? [];
   },
@@ -112,7 +116,7 @@ export const adminService = {
     discount: number,
     maxUses: number
   ): Promise<AdminPromoRecord> {
-    const userId = requireTelegramUserId();
+    const userId = requireAdminUserId();
     const res = await api.post<AdminPromoRecord>("/promo", {
       userId,
       code,
@@ -123,24 +127,24 @@ export const adminService = {
   },
 
   async deletePromo(code: string): Promise<void> {
-    const userId = requireTelegramUserId();
+    const userId = requireAdminUserId();
     await api.delete(`/promo/${encodeURIComponent(code)}`, {
       data: { userId },
     });
   },
 
   async listOrders(): Promise<AdminOrderListItem[]> {
-    const userId = requireTelegramUserId();
-    const res = await api.get<AdminOrderListItem[]>("/orders", {
-      params: { userId },
+    const userId = requireAdminUserId();
+    const res = await api.post<AdminOrderListItem[]>("/orders/list", {
+      userId,
     });
     return res.data ?? [];
   },
 
   async getAnalytics(): Promise<AdminAnalytics> {
-    const userId = requireTelegramUserId();
-    const res = await api.get<AdminAnalytics>("/analytics", {
-      params: { userId },
+    const userId = requireAdminUserId();
+    const res = await api.post<AdminAnalytics>("/analytics", {
+      userId,
     });
     const d = res.data;
     if (
