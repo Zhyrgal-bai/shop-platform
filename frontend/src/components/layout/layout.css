@@ -1,3 +1,4 @@
+/* HEADER */
 .header {
   height: 70px;
   background: #00083E;
@@ -7,35 +8,70 @@
   padding: 0 16px;
 }
 
+/* LOGO */
+.header__title {
+  color: #fff;
+  font-weight: 800;
+  font-style: italic;
+  font-size: 20px;
+  letter-spacing: 1.5px;
+  user-select: none;
+}
+
+/* BURGER */
 .header__burger {
-  width: 32px;
-  height: 32px;
+  cursor: pointer;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  cursor: pointer;
   gap: 6px;
+  width: 32px;
+  height: 32px;
+  position: relative;
+  z-index: 1200;
+  /* No highlight on tap for mobile */
   -webkit-tap-highlight-color: transparent;
 }
 
 .header__burger-line {
-  width: 100%;
-  height: 4px;
   background: #fff;
-  border-radius: 99px;
-  transition: all 0.23s cubic-bezier(0.5,1,0.33,1.2);
+  height: 4px;
+  border-radius: 3px;
+  width: 100%;
+  transition:
+    transform 0.33s cubic-bezier(0.5,1,0.33,1.2),
+    opacity 0.22s,
+    background 0.18s;
+  position: relative;
+  display: block;
 }
 
-.header__title {
-  color: #fff;
-  font-weight: bold;
-  font-style: italic;
-  font-size: 1.42rem;
-  letter-spacing: 1.7px;
-  /* Keep a clean, modern appearance */
-  user-select: none;
+/* iOS-inspired (but custom style) animation for burger when menu is open/closed */
+.header__burger.open .header__burger-line:nth-child(1) {
+  transform: translateY(10px) rotate(45deg);
+  background: #FFD700;
+}
+.header__burger.open .header__burger-line:nth-child(2) {
+  opacity: 0;
+  transform: scaleX(0.3);
+}
+.header__burger.open .header__burger-line:nth-child(3) {
+  transform: translateY(-10px) rotate(-45deg);
+  background: #FFD700;
 }
 
+/* Default state for lines (vertical stack centered) */
+.header__burger-line:nth-child(1) {
+  margin-top: 0;
+}
+.header__burger-line:nth-child(2) {
+  margin: 6px 0;
+}
+.header__burger-line:nth-child(3) {
+  margin-bottom: 0;
+}
+
+/* Media for mobile sizes */
 @media (max-width: 500px) {
   .header {
     height: 56px;
@@ -55,96 +91,82 @@
   }
 }
 
-/* HEADER */
-.header {
-    height: 70px;
-    background: #00083E;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0 16px;
-  }
-  
-  /* LOGO */
-  .header__title {
-    color: #fff;
-    font-weight: 800;
-    font-style: italic;
-    font-size: 20px;
-    letter-spacing: 1.5px;
-  }
-  
-  /* BURGER */
-  .header__burger {
-    cursor: pointer;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 6px;
-    width: 32px;
-    height: 32px;
-  }
-  
-  .header__burger-line {
-    background: #fff;
-    height: 3px;
-    border-radius: 2px;
-    width: 100%;
-    transition: 0.2s;
-  }
-
-  /* OVERLAY */
+/* OVERLAY */
 .overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    backdrop-filter: blur(4px);
-    opacity: 0;
-    pointer-events: none;
-    transition: 0.25s;
-    z-index: 1000;
-  }
-  
-  .overlay.active {
-    opacity: 1;
-    pointer-events: all;
-  }
-  
-  /* SIDE MENU */
-  .side-menu {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 240px;
-    height: 100%;
-    background: #0f0f12;
-    padding: 80px 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 18px;
-  
-    transform: translateX(-100%);
-    transition: 0.3s ease;
-    z-index: 1100;
-  }
-  
-  .side-menu.open {
-    transform: translateX(0);
-  }
-  
-  /* LINKS */
-  .side-menu button {
-    background: none;
-    border: none;
-    color: #fff;
-    font-size: 16px;
-    text-align: left;
-    font-weight: 500;
-    cursor: pointer;
-    padding: 8px 0;
-    transition: 0.2s;
-  }
-  
-  .side-menu button:hover {
-    opacity: 0.7;
-  }
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: 0.25s;
+  z-index: 1000;
+}
+
+.overlay.active {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* SIDE MENU */
+.side-menu {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 240px;
+  height: 100%;
+  background: #000030;
+  padding: 80px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+
+  transform: translateX(-100%);
+  transition: 0.3s cubic-bezier(.58,1.15,.55,.95);
+  z-index: 1100;
+}
+.side-menu.open {
+  transform: translateX(0);
+}
+
+/* LINKS — iOS-style with own twist */
+.side-menu button {
+  background: #14163F;
+  border: none;
+  border-radius: 16px;
+  color: #fff;
+  font-size: 16px;
+  text-align: left;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 11px 18px;
+  transition:
+    background 0.21s,
+    color 0.19s,
+    box-shadow 0.15s;
+  margin-bottom: 6px;
+  box-shadow: 0 2px 12px 0 rgba(30,24,71,0.08);
+  outline: none;
+  position: relative;
+}
+
+.side-menu button:hover,
+.side-menu button:focus-visible {
+  background: #282B50;
+  color: #FFD700;
+  box-shadow: 0 4px 16px 0 rgba(223,176,0,0.14);
+  outline: none;
+}
+
+/* LAYOUT */
+.layout {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #3A0000 30%, #1a1220 100%);
+  padding: 0 16px;
+}
+
+.home {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #3A0000 30%, #1a1220 100%);
+  padding: 0 16px;
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../services/api";
 import type { Product } from "../types";
 import ProductGrid from "../components/product/ProductGrid";
@@ -8,6 +8,8 @@ import "../components/ui/Toast.css";
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [toast, setToast] = useState("");
+  const [activeCategory, setActiveCategory] = useState("ВСЕ");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const showToast = (message: string) => {
     setToast(message);
@@ -28,15 +30,56 @@ export default function HomePage() {
     fetchProducts();
   }, []);
 
+  const categories = useMemo(() => {
+    const uniqueCategories = Array.from(
+      new Set(
+        products
+          .map((p) => p.category)
+          .filter((category): category is string => Boolean(category))
+      )
+    );
+    return ["ВСЕ", ...uniqueCategories];
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+
+    return products.filter((p) => {
+      const categoryMatch =
+        activeCategory === "ВСЕ" || p.category === activeCategory;
+      const searchMatch = p.name.toLowerCase().includes(normalizedQuery);
+      return categoryMatch && searchMatch;
+    });
+  }, [activeCategory, products, searchQuery]);
+
   return (
     <div className="home-page">
       {/* Premium minimal hero section */}
       <section className="hero">
         <h1 className="hero-title">BARŚ</h1>
-        <p className="hero-subtitle">Одежда</p>
+        <p className="hero-subtitle">одежда</p>
       </section>
       <div className="hero-bottom-spacer" />
-      <ProductGrid products={products} showToast={showToast} />
+      <input
+        type="text"
+        placeholder="Поиск одежды..."
+        className="search-input"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      />
+      <div className="categories">
+        {categories.map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            className={activeCategory === cat ? "active" : ""}
+            onClick={() => setActiveCategory(cat)}
+          >
+            {cat}
+          </button>
+        ))}
+      </div>
+      <ProductGrid products={filteredProducts} showToast={showToast} />
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

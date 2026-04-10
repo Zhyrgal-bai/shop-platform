@@ -8,6 +8,7 @@ const ProductForm = () => {
   const [name, setName] = useState("");
   const [price, setPrice] = useState(0);
   const [image, setImage] = useState("");
+  const [category, setCategory] = useState("");
   const [variants, setVariants] = useState<Variant[]>([]);
 
   const addVariant = () => {
@@ -69,6 +70,7 @@ const ProductForm = () => {
       name,
       price,
       image,
+      category,
       description: "",
       variants,
     };
@@ -82,6 +84,7 @@ const ProductForm = () => {
       setName("");
       setPrice(0);
       setImage("");
+      setCategory("");
       setVariants([]);
     } catch (err) {
       console.error(err);
@@ -90,14 +93,12 @@ const ProductForm = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <h2>Добавить товар</h2>
-
+    <form onSubmit={handleSubmit} className="admin-form">
       <input
         placeholder="Название"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className="border p-2 w-full"
+        className="admin-input"
       />
 
       <input
@@ -105,40 +106,60 @@ const ProductForm = () => {
         placeholder="Цена"
         value={price}
         onChange={(e) => setPrice(Number(e.target.value))}
-        className="border p-2 w-full"
+        className="admin-input"
       />
 
       <input
-        placeholder="Ссылка на фото"
+        placeholder="URL изображения"
         value={image}
         onChange={(e) => setImage(e.target.value)}
-        className="border p-2 w-full"
+        className="admin-input"
+      />
+      {image.trim() && (
+        <img
+          src={image}
+          alt="Предпросмотр изображения товара"
+          className="image-preview"
+        />
+      )}
+
+      <input
+        placeholder="Категория"
+        value={category}
+        onChange={(e) => setCategory(e.target.value)}
+        className="admin-input"
       />
 
-      <button type="button" onClick={addVariant}>
+      <button type="button" onClick={addVariant} className="admin-secondary-btn">
         + Цвет
       </button>
 
       {variants.map((v, i) => (
-        <div key={i}>
+        <div key={i} className="admin-variant">
           <input
             placeholder="Цвет"
             value={v.color}
             onChange={(e) => updateVariant(i, e.target.value)}
+            className="admin-input"
           />
 
-          <button type="button" onClick={() => addSize(i)}>
+          <button
+            type="button"
+            onClick={() => addSize(i)}
+            className="admin-secondary-btn"
+          >
             + Размер
           </button>
 
           {v.sizes.map((s, si) => (
-            <div key={si}>
+            <div key={si} className="admin-size-row">
               <input
                 placeholder="Размер"
                 value={s.size}
                 onChange={(e) =>
                   updateSize(i, si, "size", e.target.value)
                 }
+                className="admin-input"
               />
 
               <input
@@ -148,14 +169,15 @@ const ProductForm = () => {
                 onChange={(e) =>
                   updateSize(i, si, "stock", Number(e.target.value))
                 }
+                className="admin-input"
               />
             </div>
           ))}
         </div>
       ))}
 
-      <button className="bg-black text-white p-2 w-full">
-        Сохранить
+      <button className="admin-submit-btn">
+        Добавить товар
       </button>
     </form>
   );

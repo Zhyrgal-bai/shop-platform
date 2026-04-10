@@ -9,7 +9,7 @@ type ProductGridProps = {
 
 export default function ProductGrid({ products, showToast }: ProductGridProps) {
   return (
-    <div className="grid">
+    <div className="product-grid">
       {products.map((p) => (
         <ProductCard key={p.id} product={p} showToast={showToast} />
       ))}

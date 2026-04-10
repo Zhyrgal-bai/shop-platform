@@ -7,6 +7,7 @@ import { useState } from "react";
 
 export default function CartPage() {
   const items = useCartStore((state) => state.items);
+  const addItem = useCartStore((state) => state.addItem);
   const removeItem = useCartStore((state) => state.removeItem);
   const clearCart = useCartStore((state) => state.clearCart);
 
@@ -15,7 +16,7 @@ export default function CartPage() {
   const [loading, setLoading] = useState(false);
 
   // Calculate total price (with quantity)
-  const total = items.reduce((sum, item) => {
+  const totalPrice = items.reduce((sum, item) => {
     return sum + item.price * (item.quantity ?? 1);
   }, 0);
 
@@ -37,7 +38,7 @@ export default function CartPage() {
           name: user?.first_name || "Unknown",
         },
         items,
-        total,
+        total: totalPrice,
       });
       console.log("ORDER CREATED:", res.data);
 
@@ -50,6 +51,28 @@ export default function CartPage() {
     setLoading(false);
   };
 
+  const handleGoShop = () => {
+    window.location.href = "/";
+  };
+
+  const handleIncrement = (item: (typeof items)[number]) => {
+    removeItem(item);
+    addItem({
+      ...item,
+      quantity: (item.quantity ?? 1) + 1,
+    });
+  };
+
+  const handleDecrement = (item: (typeof items)[number]) => {
+    const nextQuantity = (item.quantity ?? 1) - 1;
+    removeItem(item);
+    if (nextQuantity <= 0) return;
+    addItem({
+      ...item,
+      quantity: nextQuantity,
+    });
+  };
+
   return (
     <div className="cart">
       <h1 className="cart-title">
@@ -57,75 +80,73 @@ export default function CartPage() {
       </h1>
 
       {items.length === 0 && (
-        <div className="empty" style={{ textAlign: "center", marginTop: "64px" }}>
-          <div className="empty-icon" style={{ fontSize: 38, marginBottom: 16, color: "#e2e2e2" }}>🛒</div>
-          <div className="empty-title" style={{ fontWeight: 600, fontSize: 20, marginBottom: 6 }}>Корзина пуста</div>
-          <div className="empty-desc" style={{ color: "#868686", fontSize: 16 }}>
-            Добавьте товары чтобы оформить заказ
-          </div>
+        <div className="cart-empty">
+          <div className="cart-empty-icon">🛒</div>
+          <h2>КОРЗИНА ПУСТА</h2>
+          <p>Добавьте товары, чтобы оформить заказ</p>
+          <button className="go-shop" type="button" onClick={handleGoShop}>
+            СМОТРЕТЬ ТОВАРЫ
+          </button>
         </div>
       )}
 
       {items.length > 0 && (
         <>
-          <div className="cart-list" style={{ marginBottom: 24 }}>
+          <div className="cart-list">
             {items.map((item, i) => (
               <div key={i} className="cart-item">
-                <div className="cart-item-main">
-                  <div className="cart-item-info">
-                    <span className="cart-item-name">{item.name}</span>
-                    <span className="cart-item-details">
-                      {item.color} <span className="cart-dot">&bull;</span> {item.size}
-                    </span>
+                {item.image ? (
+                  <img
+                    src={item.image}
+                    alt={item.name}
+                    className="cart-item-image"
+                  />
+                ) : (
+                  <div className="cart-item-image cart-item-image-placeholder" aria-hidden="true">
+                    🛍️
                   </div>
-                  <span className="cart-item-price">
-                    {item.price}
-                    <span className="cart-item-currency"> сом</span>
-                  </span>
+                )}
+
+                <div className="cart-info">
+                  <h3 className="cart-item-name">{item.name}</h3>
+                  <p className="cart-item-price">
+                    {item.price} <span className="cart-item-currency">сом</span>
+                  </p>
+
+                  <div className="cart-actions">
+                    <button
+                      type="button"
+                      onClick={() => handleDecrement(item)}
+                      disabled={loading}
+                      aria-label="Уменьшить"
+                    >
+                      -
+                    </button>
+                    <span>{item.quantity}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleIncrement(item)}
+                      disabled={loading}
+                      aria-label="Увеличить"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
-                <button
-                  className="cart-remove-btn"
-                  title="Удалить из корзины"
-                  aria-label="Удалить"
-                  onClick={() => removeItem(item)}
-                  disabled={loading}
-                >
-                  <svg width="22" height="22" fill="none" viewBox="0 0 22 22">
-                    <circle
-                      cx="11"
-                      cy="11"
-                      r="10"
-                      className="cart-remove-btn-bg"
-                    />
-                    <path
-                      d="M8.8 8.8L13.2 13.2M13.2 8.8L8.8 13.2"
-                      stroke="#888"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </button>
               </div>
             ))}
           </div>
           <div className="cart-footer">
-            <div className="cart-total-row">
-              <span className="cart-total-label">Итого</span>
-              <span className="cart-total-amount">{total} <span className="cart-item-currency">сом</span></span>
+            <div className="total">
+              <span>Итого:</span>
+              <strong>{totalPrice} сом</strong>
             </div>
             <button
               onClick={handleOrder}
-              className="order-btn"
+              className="checkout"
               disabled={loading}
             >
-              {loading ? "Отправка..." : "Оформить заказ"}
-            </button>
-            <button
-              onClick={clearCart}
-              className="clear-btn"
-              disabled={loading}
-            >
-              Очистить корзину
+              {loading ? "ОТПРАВКА..." : "ОФОРМИТЬ ЗАКАЗ"}
             </button>
           </div>
         </>

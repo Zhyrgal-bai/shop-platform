@@ -9,23 +9,25 @@ const ProductList = () => {
     }, [fetchProducts]);
 
   return (
-    <div>
-      <h2 className="font-semibold mb-2">Товары</h2>
+    <div className="admin-products">
+      {products.length === 0 && (
+        <div className="admin-empty-products">Пока нет товаров</div>
+      )}
 
       {products.map((p) => (
-        <div
-          key={p.id}
-          className="border p-2 mb-2 flex justify-between items-center"
-        >
-          <div>
-            <div className="font-bold">{p.name}</div>
-            <div>{p.price} сом</div>
+        <div key={p.id} className="admin-product-card">
+          <img
+            src={p.image}
+            alt={p.name}
+            className="admin-product-image"
+          />
+
+          <div className="admin-product-main">
+            <h3 className="admin-product-name">{p.name}</h3>
+            <p className="admin-product-meta">{p.price} сом</p>
           </div>
 
-          <button
-            onClick={() => deleteProduct(p.id!)}
-            className="text-red-500"
-          >
+          <button onClick={() => deleteProduct(p.id!)} className="delete">
             Удалить
           </button>
         </div>
