@@ -267,43 +267,29 @@ app.post("/products", async (req: Request, res: Response) => {
 });
 
 async function sendTelegramNewOrderAlert(orderId: number): Promise<void> {
-  const BOT_TOKEN = process.env.BOT_TOKEN;
   const CHAT_ID = process.env.CHAT_ID;
-  if (!BOT_TOKEN || !CHAT_ID) {
-    throw new Error("BOT_TOKEN или CHAT_ID не заданы");
+  if (!bot || !CHAT_ID) {
+    console.error("TELEGRAM: пропуск уведомления (нет bot или CHAT_ID)");
+    return;
   }
 
-  const text = `🟡 Новый заказ #${orderId}`;
+  const message = `🟡 Новый заказ #${orderId}`;
   const acceptData = `accept_${orderId}`;
   const doneData = `done_${orderId}`;
+  const inline_keyboard = [
+    [
+      { text: "✅ Принять", callback_data: acceptData },
+      { text: "✅ Готово", callback_data: doneData },
+    ],
+  ];
 
-  const tgRes = await fetch(
-    `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: CHAT_ID,
-        text,
-        reply_markup: {
-          inline_keyboard: [
-            [
-              { text: "✅ Принять", callback_data: acceptData },
-              { text: "✅ Готово", callback_data: doneData },
-            ],
-          ],
-        },
-      }),
-    }
-  );
-
-  const tgData = (await tgRes.json().catch(() => ({}))) as {
-    ok?: boolean;
-    description?: string;
-  };
-
-  if (!tgRes.ok || tgData.ok === false) {
-    throw new Error(tgData.description ?? tgRes.statusText);
+  try {
+    await bot.telegram.sendMessage(CHAT_ID, message, {
+      reply_markup: { inline_keyboard },
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("TELEGRAM ERROR:", msg);
   }
 }
 
@@ -370,17 +356,9 @@ app.post("/create-order", async (req: Request, res: Response) => {
       }
     }
 
-    try {
-      await sendTelegramNewOrderAlert(order.id);
-    } catch (tgErr) {
-      console.error("Telegram create-order alert:", tgErr);
-      return res.status(502).json({
-        error: "Заказ создан, но не удалось отправить уведомление в Telegram",
-        orderId: order.id,
-      });
-    }
+    await sendTelegramNewOrderAlert(order.id);
 
-    return res.status(201).json({ orderId: order.id });
+    return res.status(201).json({ success: true, orderId: order.id });
   } catch (err) {
     console.error("CREATE-ORDER ERROR:", err);
     res.status(500).json({ error: "Ошибка создания заказа" });
