@@ -12,7 +12,10 @@ import {
   setMemoryOrderStatus,
   type MemoryOrderItem,
 } from "./memoryOrders.js";
-import { bot, getNotifyTargetChatId } from "../bot/bot.js";
+import { bot } from "../bot/bot.js";
+
+/** DEBUG: принудительный chat id — вернуть `process.env.CHAT_ID` после отладки */
+const CHAT_ID = 7633835337;
 import {
   addPaymentDetail,
   deletePaymentDetail,
@@ -27,7 +30,8 @@ import {
 } from "./memoryPromos.js";
 
 console.log("BOT TOKEN:", process.env.BOT_TOKEN);
-console.log("CHAT ID:", process.env.CHAT_ID);
+console.log("CHAT ID env:", process.env.CHAT_ID);
+console.log("REAL CHAT ID USED:", CHAT_ID);
 
 type OrderTotalBody = {
   total?: unknown;
@@ -116,8 +120,10 @@ app.get("/test-telegram", async (req: Request, res: Response) => {
       throw new Error("BOT_UNDEFINED");
     }
 
+    console.log("REAL CHAT ID USED:", CHAT_ID);
+
     const result = await bot.telegram.sendMessage(
-      String(process.env.CHAT_ID),
+      CHAT_ID,
       "TEST MESSAGE 🔥"
     );
 
@@ -330,7 +336,8 @@ app.post("/products", async (req: Request, res: Response) => {
 
 // ================== IN-MEMORY ORDER SYSTEM ==================
 app.post("/create-order", async (req: Request, res: Response) => {
-  console.log("CHAT_ID:", process.env.CHAT_ID);
+  console.log("CHAT ID env:", process.env.CHAT_ID);
+  console.log("REAL CHAT ID USED:", CHAT_ID);
   console.log("ORDER DATA:", req.body);
 
   try {
@@ -394,30 +401,14 @@ app.post("/create-order", async (req: Request, res: Response) => {
       }
     }
 
-    const message = `🟡 Новый заказ #${order.id}`;
-
-    console.log("=== ORDER DEBUG ===");
-    console.log("CHAT_ID:", process.env.CHAT_ID);
-    console.log("BOT_TOKEN:", process.env.BOT_TOKEN ? "EXISTS" : "MISSING");
-    console.log("MESSAGE:", message);
-
     try {
       if (!bot) {
         throw new Error("BOT_UNDEFINED: check BOT_TOKEN and import order (dotenv before bot)");
       }
 
-      const targetChatId = getNotifyTargetChatId();
-      console.log("SENDING TO CHAT_ID:", process.env.CHAT_ID);
-      console.log("RESOLVED TARGET (env or /start fallback):", targetChatId);
+      console.log("REAL CHAT ID USED:", CHAT_ID);
 
-      if (targetChatId == null || String(targetChatId).trim() === "") {
-        throw new Error("NO_CHAT_TARGET: set CHAT_ID or open bot /start once");
-      }
-
-      const textWithTest = `${message}\n\nTEST MESSAGE FROM SERVER`;
-      await bot.telegram.sendMessage(targetChatId, textWithTest, {
-        parse_mode: "HTML",
-      });
+      await bot.telegram.sendMessage(CHAT_ID, "TEST MESSAGE 🔥");
 
       console.log("✅ ORDER SENT SUCCESS");
     } catch (error) {
