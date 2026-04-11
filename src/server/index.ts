@@ -1,8 +1,8 @@
+import "dotenv/config";
 import express from "express";
 import type { Request, Response } from "express";
 import { Prisma, PrismaClient } from "@prisma/client";
 import cors from "cors";
-import dotenv from "dotenv";
 import { isAdmin } from "./adminAuth.js";
 import {
   createMemoryOrder,
@@ -25,8 +25,6 @@ import {
   listPromoRecords,
   tryApplyPromo,
 } from "./memoryPromos.js";
-
-dotenv.config(); // ✅ ОБЯЗАТЕЛЬНО
 
 console.log("CHAT_ID:", process.env.CHAT_ID);
 
@@ -91,6 +89,24 @@ app.use(express.json());
 // ================== ROOT ==================
 app.get("/", (req: Request, res: Response) => {
   res.send("Server is working 🚀");
+});
+
+app.get("/test-telegram", async (req: Request, res: Response) => {
+  try {
+    if (!bot || !process.env.CHAT_ID) {
+      return res
+        .status(500)
+        .json({ error: "Bot or CHAT_ID missing", ok: false });
+    }
+    await bot.telegram.sendMessage(
+      String(process.env.CHAT_ID),
+      "TEST MESSAGE ✅"
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: "Telegram failed" });
+  }
 });
 
 // ================== CHECK ADMIN ==================
@@ -357,22 +373,32 @@ app.post("/create-order", async (req: Request, res: Response) => {
       }
     }
 
+    const message = `🟡 Новый заказ #${order.id}`;
+
+    console.log("=== ORDER DEBUG ===");
+    console.log("CHAT_ID:", process.env.CHAT_ID);
+    console.log("BOT_TOKEN:", process.env.BOT_TOKEN ? "EXISTS" : "MISSING");
+    console.log("MESSAGE:", message);
+
     try {
-      console.log("SENDING ORDER TO TELEGRAM...");
-      console.log("CHAT_ID:", process.env.CHAT_ID);
-      if (bot && process.env.CHAT_ID) {
-        const message = `🟡 Новый заказ #${order.id}`;
-        await bot.telegram.sendMessage(
-          process.env.CHAT_ID,
-          message,
-          { parse_mode: "HTML" }
-        );
-        console.log("ORDER SENT SUCCESS");
-      } else {
-        console.error("TELEGRAM: skip (no bot or CHAT_ID)");
+      console.log("SENDING TO TELEGRAM...");
+
+      if (!bot) {
+        throw new Error("BOT_UNDEFINED: check BOT_TOKEN and import order (dotenv before bot)");
       }
+      if (!process.env.CHAT_ID) {
+        throw new Error("CHAT_ID_UNDEFINED");
+      }
+
+      await bot.telegram.sendMessage(
+        String(process.env.CHAT_ID),
+        message,
+        { parse_mode: "HTML" }
+      );
+
+      console.log("✅ ORDER SENT SUCCESS");
     } catch (error) {
-      console.error("TELEGRAM ERROR:", error);
+      console.error("❌ TELEGRAM SEND ERROR:", error);
     }
 
     return res.status(201).json({ success: true, orderId: order.id });

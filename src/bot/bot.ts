@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { Telegraf } from "telegraf";
 import { getMemoryOrder, setMemoryOrderStatus } from "../server/memoryOrders.js";
 import { listPaymentDetails } from "../server/memoryPayments.js";
