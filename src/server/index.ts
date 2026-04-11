@@ -746,13 +746,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on ${PORT}`);
 });
-
-if (bot) {
-  const tgBot = bot;
-  tgBot
-    .launch()
-    .then(() => console.log("Telegram bot started 🤖"))
-    .catch((e) => console.error("Bot launch error:", e));
-  process.once("SIGINT", () => tgBot.stop("SIGINT"));
-  process.once("SIGTERM", () => tgBot.stop("SIGTERM"));
-}

@@ -3,22 +3,12 @@ import { Telegraf } from "telegraf";
 import { getMemoryOrder, setMemoryOrderStatus } from "../server/memoryOrders.js";
 import { listPaymentDetails } from "../server/memoryPayments.js";
 
-const botToken = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.CHAT_ID;
 
-/** `new Telegraf(process.env.BOT_TOKEN)` — без токена экземпляр не создаём */
-export const bot = botToken ? new Telegraf(botToken) : undefined;
-
-if (bot) {
-  bot.telegram
-    .getMe()
-    .then((info) => {
-      console.log("BOT INFO:", info);
-    })
-    .catch((err) => {
-      console.error("BOT ERROR:", err);
-    });
-}
+/** `new Telegraf(process.env.BOT_TOKEN)` — без токена не создаём */
+export const bot = process.env.BOT_TOKEN
+  ? new Telegraf(process.env.BOT_TOKEN)
+  : undefined;
 
 function paidKeyboard(orderId: number) {
   return {
@@ -72,28 +62,27 @@ async function sendPaymentDetailsToCustomer(
 }
 
 if (bot) {
-  bot.start((ctx) => {
-    ctx.reply("Добро пожаловать в Bars 👕", {
-      reply_markup: {
-        inline_keyboard: [
-          [
-            {
-              text: "Открыть магазин",
-              web_app: {
-                url: "https://bars-miniapp.vercel.app",
-              },
-            },
-          ],
-        ],
-      },
+  const tgBot = bot;
+
+  void tgBot.telegram
+    .getMe()
+    .then((info) => {
+      console.log("BOT INFO:", info);
+    })
+    .catch((err) => {
+      console.error("BOT ERROR:", err);
     });
+
+  tgBot.start((ctx) => {
+    console.log("USER STARTED BOT:", ctx.chat?.id);
+    void ctx.reply("Бот работает ✅");
   });
 
-  bot.on("message", (ctx) => {
+  tgBot.on("message", (ctx) => {
     console.log("USER ID:", ctx.from.id);
   });
 
-  bot.on("callback_query", async (ctx) => {
+  tgBot.on("callback_query", async (ctx) => {
     try {
       if (!("data" in ctx.callbackQuery)) return;
 
@@ -281,4 +270,12 @@ if (bot) {
       }
     }
   });
+
+  tgBot
+    .launch()
+    .then(() => console.log("🤖 Bot started"))
+    .catch((err) => console.error("Bot launch error:", err));
+
+  process.once("SIGINT", () => tgBot.stop("SIGINT"));
+  process.once("SIGTERM", () => tgBot.stop("SIGTERM"));
 }
