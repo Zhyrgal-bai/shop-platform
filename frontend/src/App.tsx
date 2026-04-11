@@ -3,22 +3,21 @@ import CartPage from "./pages/CartPage";
 import CheckoutPage from "./pages/CheckoutPage";
 import AdminPage from "./pages/AdminPage";
 import FAQPage from "./pages/FAQPage";
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useCartStore } from "./store/useCartStore";
 import "./App.css";
 import "./components/ui/Admin.css";
 import Header from "./components/layout/Header";
 import SideMenu from "./components/layout/SideMenu";
 import FloatingCart from "./components/layout/FloatingCart";
-import { isAdminPanelVisible } from "./utils/adminAccess";
-
 export default function App() {
   const [page, setPage] = useState<
     "home" | "cart" | "checkout" | "admin" | "faq"
   >("home");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const isAdmin = useMemo(() => isAdminPanelVisible(), []);
+  // DEBUG: принудительный доступ; вместе с `isAdminPanelVisible` в adminAccess.ts
+  const isAdmin = true;
 
   const items = useCartStore((state) => state.items);
   const totalQuantity = items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);

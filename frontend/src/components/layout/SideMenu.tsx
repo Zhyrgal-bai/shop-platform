@@ -4,7 +4,7 @@ type SideMenuProps = {
   open: boolean;
   onClose: () => void;
   onNav: (page: "home" | "cart" | "checkout" | "admin" | "faq") => void;
-  /** Пункт «Админ панель»: только если `isAdminPanelVisible()` в App. */
+  /** Пункт «Админ панель»: когда в App передан `isAdmin` (сейчас DEBUG: всегда true). */
   isAdmin?: boolean;
 };
 

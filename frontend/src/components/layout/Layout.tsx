@@ -1,8 +1,7 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import Header from "./Header";
 import "./layout.css";
-import { isAdminPanelVisible } from "../../utils/adminAccess";
 
 type SideMenuProps = {
   open: boolean;
@@ -37,7 +36,8 @@ type Props = {
 
 export default function Layout({ children }: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const isAdmin = useMemo(() => isAdminPanelVisible(), []);
+  // DEBUG: принудительный доступ (см. также adminAccess.ts)
+  const isAdmin = true;
 
   // Add animation class for open menu, e.g., "menu-open"
   const appClassName = `app${menuOpen ? " menu-open" : ""}`;
