@@ -1,9 +1,9 @@
 import { api } from "./api";
 import type { Product } from "../types";
-import { getTelegramWebAppUserId } from "../utils/telegram";
+import { getWebAppUserId } from "../utils/adminAccess";
 
 function requireAdminUserId(): number {
-  const userId = getTelegramWebAppUserId();
+  const userId = getWebAppUserId();
   if (!Number.isFinite(userId)) {
     throw new Error("Откройте приложение в Telegram");
   }

@@ -1,15 +1,8 @@
-/** Telegram Mini App: id всегда через `Number(rawId)`. */
+import { getWebAppUserId } from "./adminAccess";
+
+/** Telegram Mini App: тот же `userId`, что и в `getWebAppUserId()`. */
 export function getTelegramWebAppUserId(): number {
-  if (typeof window === "undefined") {
-    return Number(undefined);
-  }
-  // @ts-expect-error Telegram WebApp
-  const tg = window.Telegram?.WebApp;
-  const rawId = tg?.initDataUnsafe?.user?.id;
-  const userId = Number(rawId);
-  console.log("RAW ID:", rawId);
-  console.log("USER ID:", userId);
-  return userId;
+  return getWebAppUserId();
 }
 
 export const getTelegramUser = () => {
