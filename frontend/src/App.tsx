@@ -10,8 +10,6 @@ import "./components/ui/Admin.css";
 import Header from "./components/layout/Header";
 import SideMenu from "./components/layout/SideMenu";
 import FloatingCart from "./components/layout/FloatingCart";
-import { getTelegramWebAppUserId } from "./utils/telegram";
-import { parseViteAdminIds } from "./utils/adminIds";
 
 export default function App() {
   const [page, setPage] = useState<
@@ -19,9 +17,21 @@ export default function App() {
   >("home");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const adminIds = useMemo(() => parseViteAdminIds(), []);
-  const userId = useMemo(() => getTelegramWebAppUserId(), []);
-  const isAdmin = adminIds.includes(userId);
+  const isAdmin = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    // @ts-expect-error Telegram WebApp
+    const tg = window.Telegram?.WebApp;
+    const rawId = tg?.initDataUnsafe?.user?.id;
+    const userId = Number(rawId);
+    const ADMIN_IDS = import.meta.env.VITE_ADMIN_IDS
+      ? import.meta.env.VITE_ADMIN_IDS.split(",").map((id) =>
+          Number(id.trim())
+        )
+      : [];
+    console.log("USER ID:", userId);
+    console.log("ADMIN IDS:", ADMIN_IDS);
+    return ADMIN_IDS.includes(userId);
+  }, []);
 
   const items = useCartStore((state) => state.items);
   const totalQuantity = items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);

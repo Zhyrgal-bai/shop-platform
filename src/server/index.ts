@@ -28,6 +28,8 @@ import {
 
 dotenv.config(); // ✅ ОБЯЗАТЕЛЬНО
 
+console.log("CHAT_ID:", process.env.CHAT_ID);
+
 type OrderTotalBody = {
   total?: unknown;
   subtotal?: unknown;
@@ -267,28 +269,32 @@ app.post("/products", async (req: Request, res: Response) => {
 });
 
 async function sendTelegramNewOrderAlert(orderId: number): Promise<void> {
-  const CHAT_ID = process.env.CHAT_ID;
-  if (!bot || !CHAT_ID) {
-    console.error("TELEGRAM: пропуск уведомления (нет bot или CHAT_ID)");
+  if (!bot) {
+    console.error("TELEGRAM: пропуск уведомления (нет bot)");
+    return;
+  }
+  const chatId = process.env.CHAT_ID;
+  if (!chatId) {
+    console.error("TELEGRAM: пропуск уведомления (нет CHAT_ID)");
     return;
   }
 
   const message = `🟡 Новый заказ #${orderId}`;
   const acceptData = `accept_${orderId}`;
   const doneData = `done_${orderId}`;
-  const inline_keyboard = [
-    [
-      { text: "✅ Принять", callback_data: acceptData },
-      { text: "✅ Готово", callback_data: doneData },
+  const reply_markup = {
+    inline_keyboard: [
+      [
+        { text: "✅ Принять", callback_data: acceptData },
+        { text: "✅ Готово", callback_data: doneData },
+      ],
     ],
-  ];
+  };
 
   try {
-    await bot.telegram.sendMessage(CHAT_ID, message, {
-      reply_markup: { inline_keyboard },
-    });
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
+    await bot.telegram.sendMessage(chatId, message, { reply_markup });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
     console.error("TELEGRAM ERROR:", msg);
   }
 }

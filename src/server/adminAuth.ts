@@ -1,15 +1,14 @@
 import type { Request, Response } from "express";
 
 const ADMIN_IDS = process.env.ADMIN_IDS
-  ? process.env.ADMIN_IDS.split(",").map((id) => id.trim()).filter(Boolean)
+  ? process.env.ADMIN_IDS.split(",").map((id) => id.trim())
   : [];
 
 export function isAdmin(userId: unknown): boolean {
-  console.log("USER ID:", userId);
-  console.log("ADMIN IDS:", ADMIN_IDS);
+  console.log("USER:", userId);
+  console.log("ADMINS:", ADMIN_IDS);
 
-  if (userId === undefined || userId === null) return false;
-  if (typeof userId === "string" && userId.trim() === "") return false;
+  if (!userId) return false;
 
   return ADMIN_IDS.includes(String(userId));
 }

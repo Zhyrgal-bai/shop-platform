@@ -2,13 +2,57 @@ import { api } from "./api";
 import type { Product } from "../types";
 import { getTelegramWebAppUserId } from "../utils/telegram";
 
-/** userId из window.Telegram.WebApp.initDataUnsafe.user.id — для всех admin-запросов. */
 function requireAdminUserId(): number {
   const userId = getTelegramWebAppUserId();
   if (!Number.isFinite(userId)) {
     throw new Error("Откройте приложение в Telegram");
   }
   return userId;
+}
+
+function viteApiBase(): string {
+  const raw =
+    typeof import.meta.env.VITE_API_URL === "string"
+      ? import.meta.env.VITE_API_URL.trim()
+      : "";
+  const base = raw.replace(/\/$/, "");
+  return base !== "" ? base : "https://bars-shop.onrender.com";
+}
+
+async function readFetchError(res: Response): Promise<string> {
+  const text = await res.text();
+  try {
+    const j = JSON.parse(text) as { message?: string; error?: string };
+    return (j.message ?? j.error ?? text) || res.statusText;
+  } catch {
+    return text || res.statusText;
+  }
+}
+
+async function adminPost<T>(
+  path: string,
+  body: Record<string, unknown> = {}
+): Promise<T> {
+  const userId = requireAdminUserId();
+  const url = `${viteApiBase()}${path.startsWith("/") ? path : `/${path}`}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...body, userId }),
+  });
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<T>;
+}
+
+async function adminDelete(path: string): Promise<void> {
+  const userId = requireAdminUserId();
+  const url = `${viteApiBase()}${path.startsWith("/") ? path : `/${path}`}`;
+  const res = await fetch(url, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId }),
+  });
+  if (!res.ok) throw new Error(await readFetchError(res));
 }
 
 export type AdminPaymentDetail = {
@@ -78,37 +122,24 @@ export const adminService = {
   },
 
   async listPaymentDetails(): Promise<AdminPaymentDetail[]> {
-    const userId = requireAdminUserId();
-    const res = await api.post<AdminPaymentDetail[]>("/payment/list", {
-      userId,
-    });
-    return res.data ?? [];
+    const data = await adminPost<AdminPaymentDetail[]>("/payment/list", {});
+    return data ?? [];
   },
 
   async addPaymentDetail(
     type: string,
     value: string
   ): Promise<AdminPaymentDetail> {
-    const userId = requireAdminUserId();
-    const res = await api.post<AdminPaymentDetail>("/payment", {
-      type,
-      value,
-      userId,
-    });
-    return res.data;
+    return adminPost<AdminPaymentDetail>("/payment", { type, value });
   },
 
   async deletePaymentDetail(id: number): Promise<void> {
-    const userId = requireAdminUserId();
-    await api.delete(`/payment/${id}`, { data: { userId } });
+    await adminDelete(`/payment/${id}`);
   },
 
   async listPromos(): Promise<AdminPromoRecord[]> {
-    const userId = requireAdminUserId();
-    const res = await api.post<AdminPromoRecord[]>("/promo/list", {
-      userId,
-    });
-    return res.data ?? [];
+    const data = await adminPost<AdminPromoRecord[]>("/promo/list", {});
+    return data ?? [];
   },
 
   async addPromo(
@@ -116,37 +147,24 @@ export const adminService = {
     discount: number,
     maxUses: number
   ): Promise<AdminPromoRecord> {
-    const userId = requireAdminUserId();
-    const res = await api.post<AdminPromoRecord>("/promo", {
-      userId,
+    return adminPost<AdminPromoRecord>("/promo", {
       code,
       discount,
       maxUses,
     });
-    return res.data;
   },
 
   async deletePromo(code: string): Promise<void> {
-    const userId = requireAdminUserId();
-    await api.delete(`/promo/${encodeURIComponent(code)}`, {
-      data: { userId },
-    });
+    await adminDelete(`/promo/${encodeURIComponent(code)}`);
   },
 
   async listOrders(): Promise<AdminOrderListItem[]> {
-    const userId = requireAdminUserId();
-    const res = await api.post<AdminOrderListItem[]>("/orders/list", {
-      userId,
-    });
-    return res.data ?? [];
+    const data = await adminPost<AdminOrderListItem[]>("/orders/list", {});
+    return data ?? [];
   },
 
   async getAnalytics(): Promise<AdminAnalytics> {
-    const userId = requireAdminUserId();
-    const res = await api.post<AdminAnalytics>("/analytics", {
-      userId,
-    });
-    const d = res.data;
+    const d = await adminPost<AdminAnalytics>("/analytics", {});
     if (
       !d ||
       typeof d.totalOrders !== "number" ||

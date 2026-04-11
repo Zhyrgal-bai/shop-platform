@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { useCartStore } from "../store/useCartStore";
-import { api, API_BASE_URL } from "../services/api";
+import { api } from "../services/api";
 import { getTelegramUser, getTelegramWebAppUserId } from "../utils/telegram";
 import "../components/ui/CheckoutPage.css";
 
@@ -11,8 +11,17 @@ type Props = {
   onOrderSuccess?: () => void;
 };
 
+function viteApiBase(): string {
+  const raw =
+    typeof import.meta.env.VITE_API_URL === "string"
+      ? import.meta.env.VITE_API_URL.trim()
+      : "";
+  const base = raw.replace(/\/$/, "");
+  return base !== "" ? base : "https://bars-shop.onrender.com";
+}
+
 function promoApplyUrl(): string {
-  const base = API_BASE_URL.replace(/\/$/, "");
+  const base = viteApiBase();
   return new URL("/promo/apply", `${base}/`).toString();
 }
 
@@ -155,7 +164,7 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
         comment: comment.trim(),
       });
 
-      const createUrl = `${API_BASE_URL.replace(/\/$/, "")}/create-order`;
+      const createUrl = `${viteApiBase()}/create-order`;
       const res = await fetch(createUrl, {
         method: "POST",
         headers: {
@@ -184,15 +193,11 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
       const payload = (await res.json().catch(() => ({}))) as {
         error?: string;
         orderId?: number;
+        success?: boolean;
       };
 
-      if (res.status === 201) {
+      if (res.status === 201 && payload.success !== false && payload.orderId != null) {
         alert("Заказ отправлен");
-      } else if (res.status === 502 && payload.orderId != null) {
-        alert(
-          payload.error ??
-            `Заказ #${payload.orderId}: не удалось отправить в Telegram.`
-        );
       } else {
         alert(
           payload.error ??
