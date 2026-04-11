@@ -5,6 +5,17 @@ import { listPaymentDetails } from "../server/memoryPayments.js";
 
 const ADMIN_CHAT_ID = process.env.CHAT_ID;
 
+/** Если `CHAT_ID` в env нет — подставляется chat id из последнего `/start`. */
+let notifyFallbackChatId: number | undefined;
+
+export function getNotifyTargetChatId(): string | number | undefined {
+  const env = process.env.CHAT_ID;
+  if (env != null && String(env).trim() !== "") {
+    return String(env).trim();
+  }
+  return notifyFallbackChatId;
+}
+
 /** `new Telegraf(process.env.BOT_TOKEN)` — без токена не создаём */
 export const bot = process.env.BOT_TOKEN
   ? new Telegraf(process.env.BOT_TOKEN)
@@ -74,7 +85,12 @@ if (bot) {
     });
 
   tgBot.start((ctx) => {
-    console.log("USER STARTED BOT:", ctx.chat?.id);
+    const chatId = ctx.chat?.id;
+    console.log("USER STARTED BOT:", chatId);
+    if (chatId != null) {
+      notifyFallbackChatId = chatId;
+      console.log("NOTIFY_FALLBACK chat set from /start:", notifyFallbackChatId);
+    }
     void ctx.reply("Бот работает ✅");
   });
 

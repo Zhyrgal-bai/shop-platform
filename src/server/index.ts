@@ -12,7 +12,7 @@ import {
   setMemoryOrderStatus,
   type MemoryOrderItem,
 } from "./memoryOrders.js";
-import { bot } from "../bot/bot.js";
+import { bot, getNotifyTargetChatId } from "../bot/bot.js";
 import {
   addPaymentDetail,
   deletePaymentDetail,
@@ -402,20 +402,22 @@ app.post("/create-order", async (req: Request, res: Response) => {
     console.log("MESSAGE:", message);
 
     try {
-      console.log("SENDING TO TELEGRAM...");
-
       if (!bot) {
         throw new Error("BOT_UNDEFINED: check BOT_TOKEN and import order (dotenv before bot)");
       }
-      if (!process.env.CHAT_ID) {
-        throw new Error("CHAT_ID_UNDEFINED");
+
+      const targetChatId = getNotifyTargetChatId();
+      console.log("SENDING TO CHAT_ID:", process.env.CHAT_ID);
+      console.log("RESOLVED TARGET (env or /start fallback):", targetChatId);
+
+      if (targetChatId == null || String(targetChatId).trim() === "") {
+        throw new Error("NO_CHAT_TARGET: set CHAT_ID or open bot /start once");
       }
 
-      await bot.telegram.sendMessage(
-        String(process.env.CHAT_ID),
-        message,
-        { parse_mode: "HTML" }
-      );
+      const textWithTest = `${message}\n\nTEST MESSAGE FROM SERVER`;
+      await bot.telegram.sendMessage(targetChatId, textWithTest, {
+        parse_mode: "HTML",
+      });
 
       console.log("✅ ORDER SENT SUCCESS");
     } catch (error) {
