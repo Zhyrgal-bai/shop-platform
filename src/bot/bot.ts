@@ -2,10 +2,11 @@ import { Telegraf } from "telegraf";
 import { getMemoryOrder, setMemoryOrderStatus } from "../server/memoryOrders.js";
 import { listPaymentDetails } from "../server/memoryPayments.js";
 
-const token = process.env.BOT_TOKEN;
+const botToken = process.env.BOT_TOKEN;
 const ADMIN_CHAT_ID = process.env.CHAT_ID;
 
-export const bot = token ? new Telegraf(token) : undefined;
+/** `new Telegraf(BOT_TOKEN)` — без токена экземпляр не создаём */
+export const bot = botToken ? new Telegraf(botToken) : undefined;
 
 function paidKeyboard(orderId: number) {
   return {

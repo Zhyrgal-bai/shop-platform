@@ -3,7 +3,7 @@ import type { Request, Response } from "express";
 import { Prisma, PrismaClient } from "@prisma/client";
 import cors from "cors";
 import dotenv from "dotenv";
-import { denyIfNotAdmin, isAdmin } from "./adminAuth.js";
+import { isAdmin } from "./adminAuth.js";
 import {
   createMemoryOrder,
   getMemoryOrder,
@@ -101,74 +101,90 @@ app.post("/check-admin", (req: Request, res: Response) => {
 
 // ================== PAYMENT DETAILS (in-memory) ==================
 app.post("/payment/list", (req: Request, res: Response) => {
-  // DEBUG: admin check disabled temporarily
-  // if (!denyIfNotAdmin(req, res)) return;
-  res.json(listPaymentDetails());
+  try {
+    res.json(listPaymentDetails());
+  } catch (e) {
+    console.error("PAYMENT LIST ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 app.post("/payment", (req: Request, res: Response) => {
-  if (!denyIfNotAdmin(req, res)) return;
+  try {
+    const { type, value } = req.body as {
+      type?: string;
+      value?: string;
+    };
 
-  const { type, value } = req.body as {
-    type?: string;
-    value?: string;
-  };
+    const t = String(type ?? "").trim();
+    const v = String(value ?? "").trim();
+    if (!t || !v) {
+      return res.status(400).json({ error: "Нужны type и value" });
+    }
 
-  const t = String(type ?? "").trim();
-  const v = String(value ?? "").trim();
-  if (!t || !v) {
-    return res.status(400).json({ error: "Нужны type и value" });
+    const created = addPaymentDetail(t, v);
+    res.status(201).json(created);
+  } catch (e) {
+    console.error("PAYMENT POST ERROR:", e);
+    res.status(500).json({ error: "Server error" });
   }
-
-  const created = addPaymentDetail(t, v);
-  res.status(201).json(created);
 });
 
 app.delete("/payment/:id", (req: Request, res: Response) => {
-  if (!denyIfNotAdmin(req, res)) return;
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Неверный id" });
+    }
 
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
-    return res.status(400).json({ error: "Неверный id" });
+    if (!deletePaymentDetail(id)) {
+      return res.status(404).json({ error: "Не найдено" });
+    }
+
+    res.status(204).send();
+  } catch (e) {
+    console.error("PAYMENT DELETE ERROR:", e);
+    res.status(500).json({ error: "Server error" });
   }
-
-  if (!deletePaymentDetail(id)) {
-    return res.status(404).json({ error: "Не найдено" });
-  }
-
-  res.status(204).send();
 });
 
 // ================== PROMO CODES (in-memory) ==================
 app.post("/promo/apply", (req: Request, res: Response) => {
-  const { code, total } = req.body as { code?: unknown; total?: unknown };
-  const t = Number(total);
-  if (code == null || String(code).trim() === "" || !Number.isFinite(t)) {
-    return res.status(400).json({ error: "Нужны code и total" });
-  }
   try {
-    const result = tryApplyPromo(String(code), t);
-    return res.json({
-      success: true,
-      newTotal: result.newTotal,
-      discount: result.discount,
-    });
+    const { code, total } = req.body as { code?: unknown; total?: unknown };
+    const t = Number(total);
+    if (code == null || String(code).trim() === "" || !Number.isFinite(t)) {
+      return res.status(400).json({ error: "Нужны code и total" });
+    }
+    try {
+      const result = tryApplyPromo(String(code), t);
+      return res.json({
+        success: true,
+        newTotal: result.newTotal,
+        discount: result.discount,
+      });
+    } catch (e) {
+      const msg = promoApplyErrorMessage(e);
+      const status = msg === "Промокод не найден" ? 404 : 400;
+      return res.status(status).json({ error: msg });
+    }
   } catch (e) {
-    const msg = promoApplyErrorMessage(e);
-    const status = msg === "Промокод не найден" ? 404 : 400;
-    return res.status(status).json({ error: msg });
+    console.error("PROMO APPLY ERROR:", e);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
 app.post("/promo/list", (req: Request, res: Response) => {
-  // DEBUG: admin check disabled temporarily
-  // if (!denyIfNotAdmin(req, res)) return;
-  res.json(listPromoRecords());
+  try {
+    res.json(listPromoRecords());
+  } catch (e) {
+    console.error("PROMO LIST ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 app.post("/promo", (req: Request, res: Response) => {
-  if (!denyIfNotAdmin(req, res)) return;
-
+  try {
   const { code, discount, maxUses } = req.body as {
     code?: unknown;
     discount?: unknown;
@@ -198,11 +214,14 @@ app.post("/promo", (req: Request, res: Response) => {
     }
     return res.status(400).json({ error: "Неверные данные промокода" });
   }
+  } catch (e) {
+    console.error("PROMO POST ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 app.delete("/promo/:code", (req: Request, res: Response) => {
-  if (!denyIfNotAdmin(req, res)) return;
-
+  try {
   const codeParam = req.params.code;
   const encoded =
     typeof codeParam === "string"
@@ -216,13 +235,15 @@ app.delete("/promo/:code", (req: Request, res: Response) => {
   }
 
   res.status(204).send();
+  } catch (e) {
+    console.error("PROMO DELETE ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 // ================== CREATE PRODUCT ==================
 app.post("/products", async (req: Request, res: Response) => {
   try {
-    if (!denyIfNotAdmin(req, res)) return;
-
     const { name, price, image, description, variants } = req.body;
 
     if (!name || !price || !image || !variants || variants.length === 0) {
@@ -336,34 +357,28 @@ app.post("/create-order", async (req: Request, res: Response) => {
       }
     }
 
-    // Бот: `new Telegraf(process.env.BOT_TOKEN)` в `src/bot/bot.ts` → `import { bot }`
-    const message = `🟡 Новый заказ #${order.id}`;
-    const reply_markup = {
-      inline_keyboard: [
-        [
-          { text: "✅ Принять", callback_data: `accept_${order.id}` },
-          { text: "✅ Готово", callback_data: `done_${order.id}` },
-        ],
-      ],
-    };
-
     try {
+      console.log("SENDING ORDER TO TELEGRAM...");
+      console.log("CHAT_ID:", process.env.CHAT_ID);
       if (bot && process.env.CHAT_ID) {
-        await bot.telegram.sendMessage(process.env.CHAT_ID, message, {
-          reply_markup,
-        });
+        const message = `🟡 Новый заказ #${order.id}`;
+        await bot.telegram.sendMessage(
+          process.env.CHAT_ID,
+          message,
+          { parse_mode: "HTML" }
+        );
         console.log("ORDER SENT SUCCESS");
       } else {
         console.error("TELEGRAM: skip (no bot or CHAT_ID)");
       }
-    } catch (e) {
-      console.error("TELEGRAM ERROR:", e);
+    } catch (error) {
+      console.error("TELEGRAM ERROR:", error);
     }
 
     return res.status(201).json({ success: true, orderId: order.id });
   } catch (err) {
-    console.error("CREATE-ORDER ERROR:", err);
-    res.status(500).json({ error: "Ошибка создания заказа" });
+    console.error("CREATE ORDER ERROR:", err);
+    res.status(500).json({ error: "Server error" });
   }
 });
 
@@ -380,8 +395,7 @@ app.get("/order/:id", (req: Request, res: Response) => {
 });
 
 app.post("/order/status", (req: Request, res: Response) => {
-  if (!denyIfNotAdmin(req, res)) return;
-
+  try {
   const { id, status } = req.body as {
     id?: number;
     status?: string;
@@ -397,11 +411,14 @@ app.post("/order/status", (req: Request, res: Response) => {
     return res.status(404).json({ error: "Заказ не найден" });
   }
   res.json(updated);
+  } catch (e) {
+    console.error("ORDER STATUS ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 app.post("/analytics", (req: Request, res: Response) => {
-  // DEBUG: admin check disabled temporarily
-  // if (!denyIfNotAdmin(req, res)) return;
+  try {
   const orders = listMemoryOrders();
   const totalOrders = orders.length;
   const totalRevenue = orders
@@ -410,6 +427,10 @@ app.post("/analytics", (req: Request, res: Response) => {
   const accepted = orders.filter((o) => o.status === "ACCEPTED").length;
   const done = orders.filter((o) => o.status === "DONE").length;
   res.json({ totalOrders, totalRevenue, accepted, done });
+  } catch (e) {
+    console.error("ANALYTICS ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
 });
 
 function orderStatusRu(status: string): string {
@@ -446,8 +467,6 @@ app.get("/products", async (req: Request, res: Response) => {
 
 // ================== LIST ORDERS (admin, Prisma) ==================
 app.post("/orders/list", async (req: Request, res: Response) => {
-  // DEBUG: admin check disabled temporarily
-  // if (!denyIfNotAdmin(req, res)) return;
   try {
     const rows = await prisma.order.findMany({
       include: { user: true },
@@ -474,6 +493,7 @@ app.post("/orders/list", async (req: Request, res: Response) => {
 
 // ================== CREATE ORDER ==================
 app.post("/orders", async (req: Request, res: Response) => {
+  try {
   const body = req.body;
 
   console.log("ORDER BODY:", body);
@@ -604,13 +624,17 @@ app.post("/orders", async (req: Request, res: Response) => {
     console.error("ORDER ERROR FULL:", error);
     res.status(500).json({ error: "Ошибка при создании заказа" });
   }
+  } catch (e) {
+    console.error("ORDERS POST ROUTE ERROR:", e);
+    if (!res.headersSent) {
+      res.status(500).json({ error: "Server error" });
+    }
+  }
 });
 
 // ================== UPDATE PRODUCT ==================
 app.put("/products/:id", async (req: Request, res: Response) => {
   try {
-    if (!denyIfNotAdmin(req, res)) return;
-
     const { name, price, image, description } = req.body;
 
     const id = Number(req.params.id);
@@ -651,8 +675,6 @@ app.put("/products/:id", async (req: Request, res: Response) => {
 // ================== DELETE PRODUCT ==================
 app.delete("/products/:id", async (req: Request, res: Response) => {
   try {
-    if (!denyIfNotAdmin(req, res)) return;
-
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Неверный id" });
@@ -676,6 +698,15 @@ app.delete("/products/:id", async (req: Request, res: Response) => {
     console.error("DELETE PRODUCT ERROR:", e);
     res.status(500).json({ error: "Ошибка удаления товара" });
   }
+});
+
+// ================== GLOBAL PROCESS ERRORS ==================
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT ERROR:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED PROMISE:", reason);
 });
 
 // ================== START SERVER ==================
