@@ -4,7 +4,8 @@ import {
   getMemoryOrder,
   setMemoryOrderStatus,
 } from "../server/memoryOrders.js";
-import { listPaymentDetails } from "../server/memoryPayments.js";
+import { prisma } from "../server/db.js";
+import { listPaymentDetailsFromDb } from "../server/paymentRepo.js";
 
 /** Если `CHAT_ID` в env нет — подставляется chat id из последнего `/start`. */
 let notifyFallbackChatId: number | undefined;
@@ -53,7 +54,7 @@ async function sendPaymentDetailsToCustomer(
   orderId: number,
   intro?: string
 ): Promise<void> {
-  const details = listPaymentDetails();
+  const details = await listPaymentDetailsFromDb(prisma);
   const nonQr = details.filter((d) => d.type.toLowerCase() !== "qr");
   const qrList = details.filter((d) => d.type.toLowerCase() === "qr");
 

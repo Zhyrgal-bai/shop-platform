@@ -1,9 +1,9 @@
 import "dotenv/config";
 import express from "express";
 import type { Request, Response } from "express";
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import cors from "cors";
-import { isAdmin } from "./adminAuth.js";
+import { denyIfNotAdmin, isAdmin } from "./adminAuth.js";
 import {
   createMemoryOrder,
   getMemoryOrder,
@@ -18,18 +18,19 @@ import {
   bot,
   getNotifyTargetChatId,
 } from "../bot/bot.js";
+import { prisma } from "./db.js";
 import {
-  addPaymentDetail,
-  deletePaymentDetail,
-  listPaymentDetails,
-} from "./memoryPayments.js";
+  clearPaymentFieldByRowId,
+  listPaymentDetailsFromDb,
+  upsertPaymentSettings,
+} from "./paymentRepo.js";
 import {
-  addPromoRecord,
-  consumePromo,
-  deletePromoByCode,
-  listPromoRecords,
-  tryApplyPromo,
-} from "./memoryPromos.js";
+  consumePromoDb,
+  createPromoDb,
+  deletePromoByCodeDb,
+  listPromosFromDb,
+  tryApplyPromoDb,
+} from "./promoRepo.js";
 
 console.log("BOT TOKEN:", process.env.BOT_TOKEN ? "set" : "missing");
 console.log("CHAT ID env:", process.env.CHAT_ID ?? "(empty)");
@@ -51,9 +52,11 @@ function promoApplyErrorMessage(err: unknown): string {
 }
 
 /** Сверка total/subtotal с промокодом (без списания использования). */
-function computeOrderTotalFromBody(
+async function computeOrderTotalFromBody(
   body: OrderTotalBody
-): { ok: true; orderTotal: number; promoRaw: string } | { ok: false; error: string } {
+): Promise<
+  { ok: true; orderTotal: number; promoRaw: string } | { ok: false; error: string }
+> {
   const promoRaw = String(body.promo ?? body.promoCode ?? "").trim();
   const subtotalVal = Number(body.subtotal ?? body.total);
   const bodyTotal = Number(body.total);
@@ -67,7 +70,7 @@ function computeOrderTotalFromBody(
       return { ok: false, error: "Нужны subtotal и total для промокода" };
     }
     try {
-      const applied = tryApplyPromo(promoRaw, subtotalVal);
+      const applied = await tryApplyPromoDb(prisma, promoRaw, subtotalVal);
       if (Math.abs(bodyTotal - applied.newTotal) > 0.01) {
         return { ok: false, error: "Сумма не совпадает с промокодом" };
       }
@@ -87,7 +90,6 @@ function computeOrderTotalFromBody(
 }
 
 const app = express();
-const prisma = new PrismaClient();
 
 app.use(cors());
 app.use(express.json());
@@ -145,45 +147,40 @@ app.post("/check-admin", (req: Request, res: Response) => {
   res.json({ isAdmin: isAdmin(userId) });
 });
 
-// ================== PAYMENT DETAILS (in-memory) ==================
-app.post("/payment/list", (req: Request, res: Response) => {
+// ================== PAYMENT (Prisma singleton id=1) ==================
+app.post("/payment/list", async (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
-    res.json(listPaymentDetails());
+    res.json(await listPaymentDetailsFromDb(prisma));
   } catch (e) {
     console.error("PAYMENT LIST ERROR:", e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.post("/payment", (req: Request, res: Response) => {
+app.post("/payment", async (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
-    const { type, value } = req.body as {
-      type?: string;
-      value?: string;
-    };
-
-    const t = String(type ?? "").trim();
-    const v = String(value ?? "").trim();
-    if (!t || !v) {
-      return res.status(400).json({ error: "Нужны type и value" });
-    }
-
-    const created = addPaymentDetail(t, v);
-    res.status(201).json(created);
+    console.log("PAYMENT SAVE:", req.body);
+    await upsertPaymentSettings(prisma, req.body as Record<string, unknown>);
+    const saved = await prisma.paymentSettings.findUnique({ where: { id: 1 } });
+    res.json(saved);
   } catch (e) {
-    console.error("PAYMENT POST ERROR:", e);
-    res.status(500).json({ error: "Server error" });
+    console.error("PAYMENT ERROR:", e);
+    res.status(500).json({ error: "Failed to save payment" });
   }
 });
 
-app.delete("/payment/:id", (req: Request, res: Response) => {
+app.delete("/payment/:id", async (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Неверный id" });
     }
 
-    if (!deletePaymentDetail(id)) {
+    const ok = await clearPaymentFieldByRowId(prisma, id);
+    if (!ok) {
       return res.status(404).json({ error: "Не найдено" });
     }
 
@@ -194,8 +191,8 @@ app.delete("/payment/:id", (req: Request, res: Response) => {
   }
 });
 
-// ================== PROMO CODES (in-memory) ==================
-app.post("/promo/apply", (req: Request, res: Response) => {
+// ================== PROMO (Prisma) ==================
+app.post("/promo/apply", async (req: Request, res: Response) => {
   try {
     const { code, total } = req.body as { code?: unknown; total?: unknown };
     const t = Number(total);
@@ -203,7 +200,7 @@ app.post("/promo/apply", (req: Request, res: Response) => {
       return res.status(400).json({ error: "Нужны code и total" });
     }
     try {
-      const result = tryApplyPromo(String(code), t);
+      const result = await tryApplyPromoDb(prisma, String(code), t);
       return res.json({
         success: true,
         newTotal: result.newTotal,
@@ -220,35 +217,39 @@ app.post("/promo/apply", (req: Request, res: Response) => {
   }
 });
 
-app.post("/promo/list", (req: Request, res: Response) => {
+app.post("/promo/list", async (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
-    res.json(listPromoRecords());
+    res.json(await listPromosFromDb(prisma));
   } catch (e) {
     console.error("PROMO LIST ERROR:", e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.post("/promo", (req: Request, res: Response) => {
+app.post("/promo", async (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
-  const { code, discount, maxUses } = req.body as {
-    code?: unknown;
-    discount?: unknown;
-    maxUses?: unknown;
-  };
-
-  try {
-    const row = addPromoRecord(
-      String(code ?? ""),
-      Number(discount),
-      Number(maxUses)
+    console.log("PROMO SAVE:", req.body);
+    const body = req.body as {
+      code?: unknown;
+      discount?: unknown;
+      maxUses?: unknown;
+      limit?: unknown;
+    };
+    const lim = body.limit ?? body.maxUses;
+    const row = await createPromoDb(
+      prisma,
+      String(body.code ?? ""),
+      Number(body.discount),
+      Number(lim)
     );
     return res.status(201).json(row);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "";
-    if (msg === "DUPLICATE") {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       return res.status(409).json({ error: "Такой код уже есть" });
     }
+    const msg = e instanceof Error ? e.message : "";
     if (msg === "EMPTY_CODE") {
       return res.status(400).json({ error: "Укажите code" });
     }
@@ -256,31 +257,30 @@ app.post("/promo", (req: Request, res: Response) => {
       return res.status(400).json({ error: "discount от 0 до 100" });
     }
     if (msg === "BAD_MAX_USES") {
-      return res.status(400).json({ error: "maxUses — целое число ≥ 1" });
+      return res.status(400).json({ error: "maxUses / limit — целое число ≥ 1" });
     }
-    return res.status(400).json({ error: "Неверные данные промокода" });
-  }
-  } catch (e) {
     console.error("PROMO POST ERROR:", e);
-    res.status(500).json({ error: "Server error" });
+    return res.status(500).json({ error: "Failed to save promo" });
   }
 });
 
-app.delete("/promo/:code", (req: Request, res: Response) => {
+app.delete("/promo/:code", async (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
-  const codeParam = req.params.code;
-  const encoded =
-    typeof codeParam === "string"
-      ? codeParam
-      : Array.isArray(codeParam)
-        ? (codeParam[0] ?? "")
-        : "";
-  const raw = decodeURIComponent(encoded);
-  if (!deletePromoByCode(raw)) {
-    return res.status(404).json({ error: "Промокод не найден" });
-  }
+    const codeParam = req.params.code;
+    const encoded =
+      typeof codeParam === "string"
+        ? codeParam
+        : Array.isArray(codeParam)
+          ? (codeParam[0] ?? "")
+          : "";
+    const raw = decodeURIComponent(encoded);
+    const ok = await deletePromoByCodeDb(prisma, raw);
+    if (!ok) {
+      return res.status(404).json({ error: "Промокод не найден" });
+    }
 
-  res.status(204).send();
+    res.status(204).send();
   } catch (e) {
     console.error("PROMO DELETE ERROR:", e);
     res.status(500).json({ error: "Server error" });
@@ -289,6 +289,7 @@ app.delete("/promo/:code", (req: Request, res: Response) => {
 
 // ================== CREATE PRODUCT ==================
 app.post("/products", async (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
     const { name, price, image, description, variants } = req.body;
 
@@ -388,7 +389,7 @@ app.post("/create-order", async (req: Request, res: Response) => {
     const address = String(body.address ?? "").trim();
     const items = Array.isArray(body.items) ? body.items : [];
 
-    const totalComputed = computeOrderTotalFromBody(body);
+    const totalComputed = await computeOrderTotalFromBody(body);
     if (!totalComputed.ok) {
       return res.status(400).json({ error: totalComputed.error });
     }
@@ -425,7 +426,7 @@ app.post("/create-order", async (req: Request, res: Response) => {
 
     if (promoRaw) {
       try {
-        consumePromo(promoRaw);
+        await consumePromoDb(prisma, promoRaw);
       } catch (e) {
         console.error("consumePromo after create-order:", e);
       }
@@ -499,6 +500,7 @@ app.post("/order/status", (req: Request, res: Response) => {
 });
 
 app.post("/analytics", (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
   const orders = listMemoryOrders();
   const totalOrders = orders.length;
@@ -557,6 +559,7 @@ app.get("/products", async (req: Request, res: Response) => {
 
 // ================== LIST ORDERS (admin, Prisma) ==================
 app.post("/orders/list", async (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
     const rows = await prisma.order.findMany({
       include: { user: true },
@@ -584,6 +587,7 @@ app.post("/orders/list", async (req: Request, res: Response) => {
 
 /** In-memory заказы (мини-апп /create-order) — тот же формат, что у Prisma-списка + поле source. */
 app.post("/memory-orders/list", (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
     const rows = listMemoryOrders().map((o) => ({
       id: o.id,
@@ -612,7 +616,7 @@ app.post("/orders", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Неверные данные заказа" });
   }
 
-  const totalComputed = computeOrderTotalFromBody(body);
+  const totalComputed = await computeOrderTotalFromBody(body);
   if (!totalComputed.ok) {
     return res.status(400).json({ error: totalComputed.error });
   }
@@ -717,6 +721,14 @@ app.post("/orders", async (req: Request, res: Response) => {
 
     console.log("ORDER CREATED:", order);
 
+    if (totalComputed.promoRaw) {
+      try {
+        await consumePromoDb(prisma, totalComputed.promoRaw);
+      } catch (e) {
+        console.error("consumePromo after /orders:", e);
+      }
+    }
+
     res.json(order);
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
@@ -744,6 +756,7 @@ app.post("/orders", async (req: Request, res: Response) => {
 
 // ================== UPDATE PRODUCT ==================
 app.put("/products/:id", async (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
     const { name, price, image, description } = req.body;
 
@@ -784,6 +797,7 @@ app.put("/products/:id", async (req: Request, res: Response) => {
 
 // ================== DELETE PRODUCT ==================
 app.delete("/products/:id", async (req: Request, res: Response) => {
+  if (!denyIfNotAdmin(req, res)) return;
   try {
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {

@@ -4,7 +4,7 @@ import { getWebAppUserId } from "../utils/adminAccess";
 
 function requireAdminUserId(): number {
   const userId = getWebAppUserId();
-  if (!Number.isFinite(userId)) {
+  if (!Number.isFinite(userId) || userId <= 0) {
     throw new Error("Откройте приложение в Telegram");
   }
   return userId;
@@ -130,11 +130,14 @@ export const adminService = {
     return data ?? [];
   },
 
-  async addPaymentDetail(
-    type: string,
-    value: string
-  ): Promise<AdminPaymentDetail> {
-    return adminPost<AdminPaymentDetail>("/payment", { type, value });
+  async savePaymentSettings(data: {
+    mbank?: string;
+    optima?: string;
+    obank?: string;
+    card?: string;
+    qr?: string;
+  }): Promise<unknown> {
+    return adminPost("/payment", data as Record<string, unknown>);
   },
 
   async deletePaymentDetail(id: number): Promise<void> {
@@ -155,6 +158,7 @@ export const adminService = {
       code,
       discount,
       maxUses,
+      limit: maxUses,
     });
   },
 

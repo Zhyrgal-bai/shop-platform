@@ -1,18 +1,16 @@
 import "./layout.css";
+import { isAdminPanelVisible } from "@/utils/admin";
 
 type SideMenuProps = {
   open: boolean;
   onClose: () => void;
   onNav: (page: "home" | "cart" | "checkout" | "admin" | "faq") => void;
-  /** Пункт «Админ панель»: когда в App передан `isAdmin` (сейчас DEBUG: всегда true). */
-  isAdmin?: boolean;
 };
 
 export default function SideMenu({
   open,
   onClose,
   onNav,
-  isAdmin = false,
 }: SideMenuProps) {
   return (
     <>
@@ -27,7 +25,7 @@ export default function SideMenu({
         </button>
         <button onClick={() => onNav("cart")}>Корзина</button>
         <button onClick={() => onNav("checkout")}>Оформление</button>
-        {isAdmin && (
+        {isAdminPanelVisible() && (
           <button type="button" onClick={() => onNav("admin")}>
             Админ панель
           </button>

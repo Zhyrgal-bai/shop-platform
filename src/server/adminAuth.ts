@@ -5,11 +5,9 @@ const ADMIN_IDS = process.env.ADMIN_IDS
   : [];
 
 export function isAdmin(userId: unknown): boolean {
-  console.log("USER:", userId);
-  console.log("ADMINS:", ADMIN_IDS);
-
-  if (!userId) return false;
-
+  if (userId === undefined || userId === null || userId === "") return false;
+  const num = Number(userId);
+  if (Number.isFinite(num) && num <= 0) return false;
   return ADMIN_IDS.includes(String(userId));
 }
 

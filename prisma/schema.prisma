@@ -75,3 +75,21 @@ model OrderItem {
   order     Order @relation(fields: [orderId], references: [id])
   orderId   Int
 }
+
+// Singleton id=1: реквизиты для оплаты (мини-апп + бот).
+model PaymentSettings {
+  id     Int     @id @default(1)
+  mbank  String?
+  optima String?
+  obank  String?
+  card   String?
+  qr     String?
+}
+
+model Promo {
+  id       Int    @id @default(autoincrement())
+  code     String @unique
+  discount Int
+  maxUses  Int
+  used     Int    @default(0)
+}

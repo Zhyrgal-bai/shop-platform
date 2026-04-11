@@ -5,18 +5,41 @@ import {
   type AdminPaymentDetail,
 } from "../../services/admin.service";
 
-const PAYMENT_TYPES = ["mbank", "obank", "optima", "card", "qr"] as const;
+const FIELDS = ["mbank", "optima", "obank", "card", "qr"] as const;
+type PayField = (typeof FIELDS)[number];
 
-function truncate(s: string, max = 48): string {
-  const t = s.trim();
-  if (t.length <= max) return t;
-  return `${t.slice(0, max)}…`;
+const LABELS: Record<PayField, string> = {
+  mbank: "Mbank",
+  optima: "Optima",
+  obank: "O!Bank / другой банк",
+  card: "Карта",
+  qr: "QR (URL картинки)",
+};
+
+function rowsToMap(rows: AdminPaymentDetail[]): Record<PayField, string> {
+  const m: Record<PayField, string> = {
+    mbank: "",
+    optima: "",
+    obank: "",
+    card: "",
+    qr: "",
+  };
+  for (const r of rows) {
+    const k = r.type.toLowerCase() as PayField;
+    if (k in m) m[k] = r.value;
+  }
+  return m;
 }
 
 export default function PaymentDetailsPanel() {
-  const [items, setItems] = useState<AdminPaymentDetail[]>([]);
-  const [type, setType] = useState<string>(PAYMENT_TYPES[0]);
-  const [value, setValue] = useState("");
+  const [values, setValues] = useState<Record<PayField, string>>({
+    mbank: "",
+    optima: "",
+    obank: "",
+    card: "",
+    qr: "",
+  });
+  const [rows, setRows] = useState<AdminPaymentDetail[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(true);
@@ -25,7 +48,8 @@ export default function PaymentDetailsPanel() {
     setListLoading(true);
     try {
       const data = await adminService.listPaymentDetails();
-      setItems(data);
+      setRows(data);
+      setValues(rowsToMap(data));
       setError(null);
     } catch (e) {
       console.error(e);
@@ -36,24 +60,15 @@ export default function PaymentDetailsPanel() {
   }, []);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
 
-  const isQr = type === "qr";
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    const v = value.trim();
-    if (!v) {
-      setError(isQr ? "Укажите URL картинки" : "Укажите значение");
-      return;
-    }
-
     setLoading(true);
     setError(null);
     try {
-      await adminService.addPaymentDetail(type, v);
-      setValue("");
+      await adminService.savePaymentSettings({ ...values });
       await load();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 403) {
@@ -61,7 +76,7 @@ export default function PaymentDetailsPanel() {
       } else if (err instanceof Error && err.message.includes("Telegram")) {
         setError(err.message);
       } else {
-        setError("Не удалось добавить");
+        setError("Не удалось сохранить");
       }
     } finally {
       setLoading(false);
@@ -81,60 +96,47 @@ export default function PaymentDetailsPanel() {
     }
   };
 
+  function truncate(s: string, max = 48): string {
+    const t = s.trim();
+    if (t.length <= max) return t;
+    return `${t.slice(0, max)}…`;
+  }
+
   return (
     <>
       <h2 className="admin-section-title">Платёжные реквизиты</h2>
 
-      <form className="admin-form admin-form--payment" onSubmit={handleSubmit}>
+      <form className="admin-form admin-form--payment" onSubmit={handleSave}>
         {error && (
           <div className="admin-form-error" role="alert">
             {error}
           </div>
         )}
 
-        <div className="admin-form-section">
-          <label className="admin-field-label" htmlFor="pay-type">
-            Тип
-          </label>
-          <select
-            id="pay-type"
-            className="admin-select"
-            value={type}
-            onChange={(e) => setType(e.target.value)}
-          >
-            {PAYMENT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="admin-form-section">
-          <label className="admin-field-label" htmlFor="pay-value">
-            {isQr ? "URL картинки (QR)" : "Значение"}
-          </label>
-          <input
-            id="pay-value"
-            className="admin-input"
-            placeholder={
-              isQr
-                ? "https://example.com/qr-code.png"
-                : "Номер счёта / карты и т.д."
-            }
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            inputMode={isQr ? "url" : "text"}
-            autoComplete="off"
-          />
-        </div>
+        {FIELDS.map((field) => (
+          <div key={field} className="admin-form-section">
+            <label className="admin-field-label" htmlFor={`pay-${field}`}>
+              {LABELS[field]}
+            </label>
+            <input
+              id={`pay-${field}`}
+              className="admin-input"
+              value={values[field]}
+              onChange={(e) =>
+                setValues((prev) => ({ ...prev, [field]: e.target.value }))
+              }
+              placeholder={field === "qr" ? "https://…/qr.png" : ""}
+              autoComplete="off"
+            />
+          </div>
+        ))}
 
         <button
           type="submit"
           className="admin-submit-btn"
           disabled={loading}
         >
-          {loading ? "Добавление…" : "Добавить"}
+          {loading ? "Сохранение…" : "Сохранить реквизиты"}
         </button>
       </form>
 
@@ -142,11 +144,11 @@ export default function PaymentDetailsPanel() {
         {listLoading && (
           <p className="admin-empty-products">Загрузка…</p>
         )}
-        {!listLoading && items.length === 0 && (
-          <p className="admin-empty-products">Реквизиты не добавлены</p>
+        {!listLoading && rows.length === 0 && (
+          <p className="admin-empty-products">Заполните поля выше и сохраните</p>
         )}
         {!listLoading &&
-          items.map((p) => (
+          rows.map((p) => (
             <div key={p.id} className="admin-payment-row">
               <span className="admin-payment-line">
                 <strong>{p.type.toUpperCase()}:</strong>{" "}
@@ -157,7 +159,7 @@ export default function PaymentDetailsPanel() {
               <button
                 type="button"
                 className="delete"
-                onClick={() => handleDelete(p.id)}
+                onClick={() => void handleDelete(p.id)}
               >
                 удалить
               </button>

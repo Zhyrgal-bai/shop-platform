@@ -5,6 +5,7 @@ import AdminApp from "./pages/admin/AdminApp";
 import FAQPage from "./pages/FAQPage";
 import { useState } from "react";
 import { useCartStore } from "./store/useCartStore";
+import { isAdminPanelVisible } from "@/utils/admin";
 import "./App.css";
 import "./components/ui/Admin.css";
 import Header from "./components/layout/Header";
@@ -15,9 +16,6 @@ export default function App() {
     "home" | "cart" | "checkout" | "admin" | "faq"
   >("home");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-
-  // DEBUG: принудительный доступ; вместе с `isAdminPanelVisible` в adminAccess.ts
-  const isAdmin = true;
 
   const items = useCartStore((state) => state.items);
   const totalQuantity = items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
@@ -47,7 +45,6 @@ export default function App() {
         open={isMenuOpen}
         onClose={handleMenuClose}
         onNav={handleNav}
-        isAdmin={isAdmin}
       />
 
       <div className="content">
@@ -63,7 +60,7 @@ export default function App() {
           />
         )}
         {page === "admin" &&
-          (isAdmin ? (
+          (isAdminPanelVisible() ? (
             <AdminApp onExit={() => setPage("home")} />
           ) : (
             <div className="admin-page">
