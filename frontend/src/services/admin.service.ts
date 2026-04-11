@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, API_BASE_URL } from "./api";
 import type { Product } from "../types";
 import { getWebAppUserId } from "../utils/adminAccess";
 
@@ -68,6 +68,8 @@ export type AdminPromoRecord = {
   used: number;
 };
 
+export type AdminOrderSource = "prisma" | "memory";
+
 export type AdminOrderListItem = {
   id: number;
   name: string;
@@ -75,6 +77,7 @@ export type AdminOrderListItem = {
   status: string;
   statusText: string;
   total: number;
+  source?: AdminOrderSource;
 };
 
 export type AdminAnalytics = {
@@ -82,6 +85,7 @@ export type AdminAnalytics = {
   totalRevenue: number;
   accepted: number;
   done: number;
+  byStatus?: Record<string, number>;
 };
 
 export const adminService = {
@@ -163,6 +167,35 @@ export const adminService = {
     return data ?? [];
   },
 
+  async listMemoryOrders(): Promise<AdminOrderListItem[]> {
+    const data = await adminPost<AdminOrderListItem[]>("/memory-orders/list", {});
+    return data ?? [];
+  },
+
+  /** Prisma + in-memory, новые сверху (по id). */
+  async listAllOrders(): Promise<AdminOrderListItem[]> {
+    const [prismaRows, memoryRows] = await Promise.all([
+      adminPost<AdminOrderListItem[]>("/orders/list", {}),
+      adminPost<AdminOrderListItem[]>("/memory-orders/list", {}),
+    ]);
+    return [...(memoryRows ?? []), ...(prismaRows ?? [])].sort(
+      (a, b) => b.id - a.id
+    );
+  },
+
+  /** Только заказы из `/create-order` — смена статуса для Telegram-цепочки. */
+  async updateMemoryOrderStatus(
+    id: number,
+    status: "ACCEPTED" | "CONFIRMED" | "SHIPPED"
+  ): Promise<void> {
+    const res = await fetch(`${API_BASE_URL}/order/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, status }),
+    });
+    if (!res.ok) throw new Error(await readFetchError(res));
+  },
+
   async getAnalytics(): Promise<AdminAnalytics> {
     const d = await adminPost<AdminAnalytics>("/analytics", {});
     if (
@@ -174,6 +207,12 @@ export const adminService = {
     ) {
       throw new Error("Некорректный ответ аналитики");
     }
-    return d;
+    const byStatus =
+      d.byStatus != null &&
+      typeof d.byStatus === "object" &&
+      !Array.isArray(d.byStatus)
+        ? d.byStatus
+        : {};
+    return { ...d, byStatus };
   },
 };

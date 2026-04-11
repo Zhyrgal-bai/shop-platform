@@ -507,7 +507,11 @@ app.post("/analytics", (req: Request, res: Response) => {
     .reduce((sum, o) => sum + Number(o.total), 0);
   const accepted = orders.filter((o) => o.status === "ACCEPTED").length;
   const done = orders.filter((o) => o.status === "SHIPPED").length;
-  res.json({ totalOrders, totalRevenue, accepted, done });
+  const byStatus: Record<string, number> = {};
+  for (const o of orders) {
+    byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
+  }
+  res.json({ totalOrders, totalRevenue, accepted, done, byStatus });
   } catch (e) {
     console.error("ANALYTICS ERROR:", e);
     res.status(500).json({ error: "Server error" });
@@ -568,11 +572,31 @@ app.post("/orders/list", async (req: Request, res: Response) => {
         status: o.status,
         statusText: orderStatusRu(o.status),
         total: o.total,
+        source: "prisma" as const,
       };
     });
     res.json(orders);
   } catch (e) {
     console.error("LIST ORDERS ERROR:", e);
+    res.status(500).json({ error: "Ошибка загрузки заказов" });
+  }
+});
+
+/** In-memory заказы (мини-апп /create-order) — тот же формат, что у Prisma-списка + поле source. */
+app.post("/memory-orders/list", (req: Request, res: Response) => {
+  try {
+    const rows = listMemoryOrders().map((o) => ({
+      id: o.id,
+      name: o.name,
+      phone: o.phone,
+      total: o.total,
+      status: o.status,
+      statusText: orderStatusRu(o.status),
+      source: "memory" as const,
+    }));
+    res.json(rows);
+  } catch (e) {
+    console.error("MEMORY ORDERS LIST ERROR:", e);
     res.status(500).json({ error: "Ошибка загрузки заказов" });
   }
 });

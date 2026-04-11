@@ -1,7 +1,7 @@
 import HomePage from "./pages/HomePage";
 import CartPage from "./pages/CartPage";
 import CheckoutPage from "./pages/CheckoutPage";
-import AdminPage from "./pages/AdminPage";
+import AdminApp from "./pages/admin/AdminApp";
 import FAQPage from "./pages/FAQPage";
 import { useState } from "react";
 import { useCartStore } from "./store/useCartStore";
@@ -64,7 +64,7 @@ export default function App() {
         )}
         {page === "admin" &&
           (isAdmin ? (
-            <AdminPage />
+            <AdminApp onExit={() => setPage("home")} />
           ) : (
             <div className="admin-page">
               <div className="no-access">Нет прав</div>
