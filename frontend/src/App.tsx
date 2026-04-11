@@ -10,6 +10,8 @@ import "./components/ui/Admin.css";
 import Header from "./components/layout/Header";
 import SideMenu from "./components/layout/SideMenu";
 import FloatingCart from "./components/layout/FloatingCart";
+import { isAdmin } from "./utils/adminAccess";
+import { getTelegramWebAppUserId } from "./utils/telegram";
 
 export default function App() {
   const [page, setPage] = useState<
@@ -17,20 +19,10 @@ export default function App() {
   >("home");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
-  const isAdmin = useMemo(() => {
+  const hasAdminAccess = useMemo(() => {
     if (typeof window === "undefined") return false;
-    // @ts-expect-error Telegram WebApp
-    const tg = window.Telegram?.WebApp;
-    const rawId = tg?.initDataUnsafe?.user?.id;
-    const userId = Number(rawId);
-    const ADMIN_IDS = import.meta.env.VITE_ADMIN_IDS
-      ? import.meta.env.VITE_ADMIN_IDS.split(",").map((id) =>
-          Number(id.trim())
-        )
-      : [];
-    console.log("USER ID:", userId);
-    console.log("ADMIN IDS:", ADMIN_IDS);
-    return ADMIN_IDS.includes(userId);
+    const userId = getTelegramWebAppUserId();
+    return isAdmin(userId);
   }, []);
 
   const items = useCartStore((state) => state.items);
@@ -61,7 +53,7 @@ export default function App() {
         open={isMenuOpen}
         onClose={handleMenuClose}
         onNav={handleNav}
-        isAdmin={isAdmin}
+        isAdmin={hasAdminAccess}
       />
 
       <div className="content">
@@ -76,8 +68,8 @@ export default function App() {
             onOrderSuccess={() => setPage("home")}
           />
         )}
-        {page === "admin" && isAdmin && <AdminPage />}
-        {page === "admin" && !isAdmin && (
+        {page === "admin" && hasAdminAccess && <AdminPage />}
+        {page === "admin" && !hasAdminAccess && (
           <div className="admin-page">
             <div className="no-access">Нет прав</div>
           </div>
