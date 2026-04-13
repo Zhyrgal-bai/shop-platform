@@ -3,8 +3,8 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
-// @ts-expect-error Telegram WebApp
-window.Telegram?.WebApp?.ready();
+const tg = window.Telegram?.WebApp;
+tg?.ready();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

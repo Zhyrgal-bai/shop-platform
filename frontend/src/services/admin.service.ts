@@ -1,4 +1,4 @@
-import { api, API_BASE_URL } from "./api";
+import { api } from "./api";
 import type { Product } from "../types";
 import { getWebAppUserId } from "../utils/adminAccess";
 
@@ -44,6 +44,17 @@ async function adminPost<T>(
   return res.json() as Promise<T>;
 }
 
+async function adminGet<T>(path: string): Promise<T> {
+  const userId = requireAdminUserId();
+  const base = viteApiBase().replace(/\/$/, "");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const url = new URL(`${base}${p}`);
+  url.searchParams.set("userId", String(userId));
+  const res = await fetch(url.toString(), { method: "GET" });
+  if (!res.ok) throw new Error(await readFetchError(res));
+  return res.json() as Promise<T>;
+}
+
 async function adminDelete(path: string): Promise<void> {
   const userId = requireAdminUserId();
   const url = `${viteApiBase()}${path.startsWith("/") ? path : `/${path}`}`;
@@ -68,8 +79,6 @@ export type AdminPromoRecord = {
   used: number;
 };
 
-export type AdminOrderSource = "prisma" | "memory";
-
 export type AdminOrderListItem = {
   id: number;
   name: string;
@@ -77,7 +86,6 @@ export type AdminOrderListItem = {
   status: string;
   statusText: string;
   total: number;
-  source?: AdminOrderSource;
 };
 
 export type AdminAnalytics = {
@@ -89,6 +97,11 @@ export type AdminAnalytics = {
   shipped?: number;
   byStatus?: Record<string, number>;
 };
+
+async function fetchAdminOrders(): Promise<AdminOrderListItem[]> {
+  const data = await adminGet<AdminOrderListItem[]>("/orders");
+  return Array.isArray(data) ? data : [];
+}
 
 export const adminService = {
   async getProducts(): Promise<Product[]> {
@@ -196,31 +209,12 @@ export const adminService = {
     await adminDelete(`/promo/${encodeURIComponent(code)}`);
   },
 
-  async listOrders(): Promise<AdminOrderListItem[]> {
-    const data = await adminPost<AdminOrderListItem[]>("/orders/list", {});
-    return data ?? [];
-  },
+  /** Список заказов из PostgreSQL (polling и после действий). */
+  fetchOrders: fetchAdminOrders,
 
-  async listMemoryOrders(): Promise<AdminOrderListItem[]> {
-    const data = await adminPost<AdminOrderListItem[]>("/memory-orders/list", {});
-    return data ?? [];
-  },
+  listOrders: fetchAdminOrders,
 
-  /** Prisma + in-memory без дубликатов по id (приоритет у строки из БД). */
-  async listAllOrders(): Promise<AdminOrderListItem[]> {
-    const [prismaRows, memoryRows] = await Promise.all([
-      adminPost<AdminOrderListItem[]>("/orders/list", {}),
-      adminPost<AdminOrderListItem[]>("/memory-orders/list", {}),
-    ]);
-    const byId = new Map<number, AdminOrderListItem>();
-    for (const r of memoryRows ?? []) {
-      byId.set(r.id, r);
-    }
-    for (const r of prismaRows ?? []) {
-      byId.set(r.id, r);
-    }
-    return [...byId.values()].sort((a, b) => b.id - a.id);
-  },
+  listAllOrders: fetchAdminOrders,
 
   async uploadImage(file: File): Promise<string> {
     const userId = requireAdminUserId();
@@ -255,10 +249,11 @@ export const adminService = {
     status: "ACCEPTED" | "CONFIRMED" | "SHIPPED"
   ): Promise<void> {
     const userId = requireAdminUserId();
-    const res = await fetch(`${API_BASE_URL}/order/status`, {
-      method: "POST",
+    const url = `${viteApiBase()}/orders/${id}`;
+    const res = await fetch(url, {
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status, userId }),
+      body: JSON.stringify({ status, userId }),
     });
     if (!res.ok) throw new Error(await readFetchError(res));
   },

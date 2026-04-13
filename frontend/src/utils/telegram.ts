@@ -1,13 +1,18 @@
 import { getWebAppUserId } from "./adminAccess";
 
+export type TelegramMiniAppUser = TelegramWebAppUser;
+
 /** Telegram Mini App: тот же `userId`, что и в `getWebAppUserId()`. */
 export function getTelegramWebAppUserId(): number {
   return getWebAppUserId();
 }
 
-export const getTelegramUser = () => {
-  // @ts-expect-error Telegram WebApp
-  const tg = window.Telegram?.WebApp;
+export function getTelegramWebApp(): TelegramWebApp | undefined {
+  return window.Telegram?.WebApp;
+}
+
+export const getTelegramUser = (): TelegramWebAppUser | null => {
+  const tg = getTelegramWebApp();
 
   if (!tg) {
     console.log("NO TELEGRAM");
@@ -17,5 +22,5 @@ export const getTelegramUser = () => {
   console.log("INIT DATA:", tg.initData);
   console.log("INIT DATA UNSAFE:", tg.initDataUnsafe);
 
-  return tg.initDataUnsafe?.user || null;
+  return tg.initDataUnsafe?.user ?? null;
 };

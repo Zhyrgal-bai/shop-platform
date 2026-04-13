@@ -44,13 +44,23 @@ export default function AdminAnalyticsPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const onOrdersChanged = () => void load();
+    window.addEventListener("bars-shop:admin-orders-changed", onOrdersChanged);
+    return () =>
+      window.removeEventListener(
+        "bars-shop:admin-orders-changed",
+        onOrdersChanged
+      );
+  }, [load]);
+
   return (
     <div className="admin-dash-page">
       <header className="admin-dash-page__head">
         <h1 className="admin-dash-page__title">Аналитика</h1>
         <p className="admin-dash-page__subtitle">
-          По заказам в базе данных (Prisma). Выручка — сумма заказов в статусе
-          CONFIRMED.
+          По заказам в базе данных (Prisma). Выручка — сумма заказов в статусах
+          CONFIRMED и SHIPPED.
         </p>
       </header>
 
@@ -72,7 +82,7 @@ export default function AdminAnalyticsPage() {
               <span className="admin-kpi-card__value">{data.totalOrders}</span>
             </div>
             <div className="admin-kpi-card">
-              <span className="admin-kpi-card__label">Выручка (CONFIRMED)</span>
+              <span className="admin-kpi-card__label">Выручка (оплач. + отпр.)</span>
               <span className="admin-kpi-card__value">{data.totalRevenue} сом</span>
             </div>
             <div className="admin-kpi-card">

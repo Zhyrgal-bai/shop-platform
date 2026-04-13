@@ -8,19 +8,10 @@ import {
   isCloudinaryConfigured,
   uploadImageToCloudinary,
 } from "./cloudinary.js";
-import { denyIfNotAdmin, isAdmin } from "./adminAuth.js";
+import { denyIfNotAdmin, denyIfNotAdminQuery, isAdmin } from "./adminAuth.js";
+import { isValidOrderStatus, type OrderStatus } from "./orderStatus.js";
 import {
-  createMemoryOrder,
-  getMemoryOrder,
-  isValidOrderStatus,
-  listMemoryOrders,
-  setMemoryOrderStatus,
-  type MemoryOrder,
-  type MemoryOrderItem,
-  type OrderStatus,
-} from "./memoryOrders.js";
-import {
-  adminMemoryOrderInlineKeyboard,
+  adminOrderInlineKeyboard,
   bot,
   getNotifyTargetChatId,
 } from "../bot/bot.js";
@@ -494,151 +485,39 @@ app.post("/products", async (req: Request, res: Response) => {
   }
 });
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function formatMemoryOrderAdminHtml(order: MemoryOrder): string {
-  const itemLines = order.items.map((i) => {
-    const colorPart = i.color ? `, ${escapeHtml(String(i.color))}` : "";
-    const pricePart =
-      i.price != null && Number.isFinite(Number(i.price))
-        ? ` — ${escapeHtml(String(i.price))} ₸`
-        : "";
-    return `• ${escapeHtml(i.name)} (${escapeHtml(i.size)}${colorPart}) × ${Number(i.quantity)}${pricePart}`;
-  });
-  return (
-    `📦 <b>Новый заказ #${order.id}</b>\n\n` +
-    `👤 ${escapeHtml(order.name)}\n` +
-    `📞 ${escapeHtml(order.phone)}\n` +
-    `📍 ${escapeHtml(order.address)}\n\n` +
-    `<b>Товары:</b>\n${itemLines.join("\n")}\n\n` +
-    `<b>Итого:</b> ${escapeHtml(String(order.total))} ₸` +
-    (order.customerTelegramId != null
-      ? `\n🆔 Telegram: <code>${order.customerTelegramId}</code>`
-      : "")
-  );
-}
-
-// ================== IN-MEMORY ORDER SYSTEM ==================
-app.post("/create-order", async (req: Request, res: Response) => {
-  console.log("ORDER DATA:", req.body);
-
+async function performOrderStatusUpdate(
+  orderId: number,
+  statusRaw: unknown
+): Promise<
+  | { ok: true; body: unknown }
+  | { ok: false; statusCode: number; error: string }
+> {
+  const stRaw = String(statusRaw ?? "");
+  console.log("ORDER STATUS:", stRaw);
+  if (!isValidOrderStatus(stRaw)) {
+    return { ok: false, statusCode: 400, error: "Нужен допустимый status" };
+  }
+  let st: OrderStatus = stRaw as OrderStatus;
+  if (stRaw === "CONFIRMED") {
+    st = "CONFIRMED";
+  }
   try {
-    const body = req.body as {
-      name?: string;
-      phone?: string;
-      address?: string;
-      items?: MemoryOrderItem[];
-      total?: number;
-      subtotal?: number;
-      promo?: string;
-      promoCode?: string;
-      customerTelegramId?: number;
-      prismaOrderId?: number;
-    };
-
-    const name = String(body.name ?? "").trim();
-    const phone = String(body.phone ?? "").trim();
-    const address = String(body.address ?? "").trim();
-    const items = Array.isArray(body.items) ? body.items : [];
-
-    const totalComputed = await computeOrderTotalFromBody(body);
-    if (!totalComputed.ok) {
-      return res.status(400).json({ error: totalComputed.error });
-    }
-    const { orderTotal, promoRaw } = totalComputed;
-
-    if (!name || !phone || items.length === 0) {
-      return res.status(400).json({
-        error: "Нужны name, phone, items (массив) и total",
-      });
-    }
-
-    for (const i of items) {
-      if (!i?.name || !i?.size || !Number.isFinite(Number(i.quantity))) {
-        return res.status(400).json({
-          error: "Каждый товар: name, size, quantity",
-        });
-      }
-    }
-
-    const tgRaw = body.customerTelegramId;
-    const customerTelegramId =
-      tgRaw != null && Number.isFinite(Number(tgRaw)) ? Number(tgRaw) : null;
-
-    const prismaOrderIdRaw = body.prismaOrderId;
-    const prismaOrderId =
-      prismaOrderIdRaw != null && Number.isFinite(Number(prismaOrderIdRaw))
-        ? Math.trunc(Number(prismaOrderIdRaw))
-        : undefined;
-
-    const order = createMemoryOrder({
-      name,
-      phone,
-      address: address || "—",
-      items,
-      total: orderTotal,
-      ...(customerTelegramId != null
-        ? { customerTelegramId }
-        : {}),
-      ...(prismaOrderId != null ? { id: prismaOrderId } : {}),
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: { status: st },
     });
-
-    if (promoRaw) {
-      try {
-        await consumePromoDb(prisma, promoRaw);
-      } catch (e) {
-        console.error("consumePromo after create-order:", e);
-      }
+    return { ok: true, body: updated };
+  } catch (e) {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2025"
+    ) {
+      return { ok: false, statusCode: 404, error: "Заказ не найден" };
     }
-
-    try {
-      if (!bot) {
-        throw new Error("BOT_UNDEFINED: check BOT_TOKEN and import order (dotenv before bot)");
-      }
-
-      const target = getNotifyTargetChatId();
-      if (target == null) {
-        console.error(
-          "Telegram: нет CHAT_ID в env и не задан fallback с /start — заказ не отправлен в чат"
-        );
-      } else {
-        await bot.telegram.sendMessage(
-          target,
-          formatMemoryOrderAdminHtml(order),
-          {
-            parse_mode: "HTML",
-            reply_markup: adminMemoryOrderInlineKeyboard(order.id),
-          }
-        );
-        console.log("✅ ORDER SENT TO ADMIN", order.id);
-      }
-    } catch (error) {
-      console.error("❌ TELEGRAM SEND ERROR:", error);
-    }
-
-    return res.status(201).json({ success: true, orderId: order.id });
-  } catch (err) {
-    console.error("CREATE ORDER ERROR:", err);
-    res.status(500).json({ error: "Server error" });
+    console.error("ORDER STATUS ERROR:", e);
+    return { ok: false, statusCode: 500, error: "fail" };
   }
-});
-
-app.get("/order/:id", (req: Request, res: Response) => {
-  const id = Number(req.params.id);
-  if (!Number.isFinite(id)) {
-    return res.status(400).json({ error: "Неверный id" });
-  }
-  const order = getMemoryOrder(id);
-  if (!order) {
-    return res.status(404).json({ error: "Заказ не найден" });
-  }
-  res.json(order);
-});
+}
 
 app.post("/order/status", async (req: Request, res: Response) => {
   try {
@@ -651,38 +530,55 @@ app.post("/order/status", async (req: Request, res: Response) => {
     };
 
     const orderId = Number(id);
-    if (!Number.isFinite(orderId) || !status || !isValidOrderStatus(String(status))) {
-      return res.status(400).json({ error: "Нужны id и допустимый status" });
+    if (!Number.isFinite(orderId)) {
+      return res.status(400).json({ error: "Нужен id" });
     }
 
-    const st = String(status) as OrderStatus;
-
-    try {
-      const updated = await prisma.order.update({
-        where: { id: orderId },
-        data: { status: st },
-      });
-      const mem = getMemoryOrder(orderId);
-      if (mem) {
-        setMemoryOrderStatus(orderId, st);
-      }
-      return res.json(updated);
-    } catch (e) {
-      if (
-        e instanceof Prisma.PrismaClientKnownRequestError &&
-        e.code === "P2025"
-      ) {
-        const mem = setMemoryOrderStatus(orderId, st);
-        if (!mem) {
-          return res.status(404).json({ error: "Заказ не найден" });
-        }
-        return res.json(mem);
-      }
-      console.error("ORDER STATUS ERROR:", e);
-      return res.status(500).json({ error: "fail" });
+    const result = await performOrderStatusUpdate(orderId, status);
+    if (!result.ok) {
+      return res.status(result.statusCode).json({ error: result.error });
     }
+    return res.json(result.body);
   } catch (e) {
     console.error("ORDER STATUS ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.put("/orders/:id/status", async (req: Request, res: Response) => {
+  try {
+    if (!denyIfNotAdmin(req, res)) return;
+    const orderId = Number(req.params.id);
+    if (!Number.isFinite(orderId)) {
+      return res.status(400).json({ error: "Неверный id" });
+    }
+    const { status } = req.body as { status?: unknown };
+    const result = await performOrderStatusUpdate(orderId, status);
+    if (!result.ok) {
+      return res.status(result.statusCode).json({ error: result.error });
+    }
+    return res.json(result.body);
+  } catch (e) {
+    console.error("PUT ORDER STATUS ERROR:", e);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+app.put("/orders/:id", async (req: Request, res: Response) => {
+  try {
+    if (!denyIfNotAdmin(req, res)) return;
+    const orderId = Number(req.params.id);
+    if (!Number.isFinite(orderId)) {
+      return res.status(400).json({ error: "Неверный id" });
+    }
+    const { status } = req.body as { status?: unknown };
+    const result = await performOrderStatusUpdate(orderId, status);
+    if (!result.ok) {
+      return res.status(result.statusCode).json({ error: result.error });
+    }
+    return res.json(result.body);
+  } catch (e) {
+    console.error("PUT ORDER ERROR:", e);
     res.status(500).json({ error: "Server error" });
   }
 });
@@ -695,7 +591,7 @@ app.post("/analytics", async (req: Request, res: Response) => {
 
     const totalOrders = orders.length;
     const totalRevenue = orders
-      .filter((o) => o.status === "CONFIRMED")
+      .filter((o) => o.status === "CONFIRMED" || o.status === "SHIPPED")
       .reduce((sum, o) => sum + o.total, 0);
     const accepted = orders.filter((o) => o.status === "ACCEPTED").length;
     const pending = orders.filter((o) => o.status === "PAID_PENDING").length;
@@ -783,53 +679,115 @@ app.get("/products/:id", async (req: Request, res: Response) => {
   }
 });
 
+async function fetchAdminOrdersPayload() {
+  const rows = await prisma.order.findMany({
+    include: { user: true },
+    orderBy: { id: "desc" },
+  });
+  return rows.map((o) => {
+    const phone =
+      (o as { customerPhone?: string | null }).customerPhone?.trim() || "—";
+    return {
+      id: o.id,
+      name: o.user.name?.trim() || "Гость",
+      phone,
+      status: o.status,
+      statusText: orderStatusRu(o.status),
+      total: o.total,
+    };
+  });
+}
+
 // ================== LIST ORDERS (admin, Prisma) ==================
-app.post("/orders/list", async (req: Request, res: Response) => {
-  if (!denyIfNotAdmin(req, res)) return;
+app.get("/orders", async (req: Request, res: Response) => {
+  if (!denyIfNotAdminQuery(req, res)) return;
   try {
-    const rows = await prisma.order.findMany({
-      include: { user: true },
-      orderBy: { id: "desc" },
-    });
-    const orders = rows.map((o) => {
-      const phone =
-        (o as { customerPhone?: string | null }).customerPhone?.trim() || "—";
-      return {
-        id: o.id,
-        name: o.user.name?.trim() || "Гость",
-        phone,
-        status: o.status,
-        statusText: orderStatusRu(o.status),
-        total: o.total,
-        source: "prisma" as const,
-      };
-    });
-    res.json(orders);
+    res.json(await fetchAdminOrdersPayload());
   } catch (e) {
     console.error("LIST ORDERS ERROR:", e);
     res.status(500).json({ error: "Ошибка загрузки заказов" });
   }
 });
 
-/** In-memory заказы (мини-апп /create-order) — тот же формат, что у Prisma-списка + поле source. */
-app.post("/memory-orders/list", (req: Request, res: Response) => {
+app.post("/orders/list", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
-    const rows = listMemoryOrders().map((o) => ({
-      id: o.id,
-      name: o.name,
-      phone: o.phone,
-      total: o.total,
-      status: o.status,
-      statusText: orderStatusRu(o.status),
-      source: "memory" as const,
-    }));
-    res.json(rows);
+    res.json(await fetchAdminOrdersPayload());
   } catch (e) {
-    console.error("MEMORY ORDERS LIST ERROR:", e);
+    console.error("LIST ORDERS ERROR:", e);
     res.status(500).json({ error: "Ошибка загрузки заказов" });
   }
 });
+
+/** Уведомление админу в Telegram о новом заказе из POST /orders (Prisma). */
+async function notifyAdminNewOrderTelegram(input: {
+  orderId: number;
+  customerName: string;
+  phone: string;
+  address: string;
+  total: number;
+  items: { name: string; quantity: number }[];
+}): Promise<void> {
+  const chatId = getNotifyTargetChatId();
+  if (chatId == null) {
+    console.log(
+      "TELEGRAM ORDER NOTIFY: пропуск (нет чата: задайте CHAT_ID или /start у бота)"
+    );
+    return;
+  }
+
+  const message =
+    `🛒 Новый заказ #${input.orderId}\n\n` +
+    `👤 Имя: ${input.customerName}\n` +
+    `📞 Телефон: ${input.phone}\n` +
+    `📍 Адрес: ${input.address}\n\n` +
+    `💰 Сумма: ${input.total} сом\n\n` +
+    `📦 Товары:\n` +
+    input.items.map((i) => `- ${i.name} x${i.quantity}`).join("\n");
+
+  try {
+    if (bot) {
+      await bot.telegram.sendMessage(chatId, message, {
+        reply_markup: adminOrderInlineKeyboard(input.orderId),
+      });
+      console.log("TELEGRAM ORDER NOTIFY: ok", input.orderId);
+      return;
+    }
+
+    const token = process.env.BOT_TOKEN;
+    if (!token) {
+      console.log("TELEGRAM ORDER NOTIFY: пропуск (нет BOT_TOKEN)");
+      return;
+    }
+
+    const res = await fetch(
+      `https://api.telegram.org/bot${encodeURIComponent(token)}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: message,
+        }),
+      }
+    );
+    const json = (await res.json().catch(() => ({}))) as {
+      ok?: boolean;
+      description?: string;
+    };
+    if (!res.ok || json.ok === false) {
+      console.error(
+        "TELEGRAM ORDER NOTIFY: sendMessage failed",
+        res.status,
+        json
+      );
+    } else {
+      console.log("TELEGRAM ORDER NOTIFY: ok", input.orderId);
+    }
+  } catch (error) {
+    console.error("TELEGRAM ORDER NOTIFY error:", error);
+  }
+}
 
 // ================== CREATE ORDER ==================
 app.post("/orders", async (req: Request, res: Response) => {
@@ -946,6 +904,34 @@ app.post("/orders", async (req: Request, res: Response) => {
     });
 
     console.log("ORDER CREATED:", order);
+
+    const bodyAddr = (body as { address?: unknown }).address;
+    const address =
+      bodyAddr != null && String(bodyAddr).trim() !== ""
+        ? String(bodyAddr).trim()
+        : "—";
+    const displayName =
+      user.name?.trim() ||
+      String(
+        (body as { user?: { name?: string } }).user?.name ?? ""
+      ).trim() ||
+      "Гость";
+    const phone =
+      order.customerPhone?.trim() ||
+      String((body as { phone?: unknown }).phone ?? "").trim() ||
+      "—";
+
+    void notifyAdminNewOrderTelegram({
+      orderId: order.id,
+      customerName: displayName,
+      phone,
+      address,
+      total: order.total,
+      items: order.items.map((i) => ({
+        name: i.name,
+        quantity: i.quantity,
+      })),
+    });
 
     if (totalComputed.promoRaw) {
       try {

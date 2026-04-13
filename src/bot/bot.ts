@@ -1,10 +1,6 @@
 import "dotenv/config";
 import { Telegraf } from "telegraf";
-import {
-  getMemoryOrder,
-  setMemoryOrderStatus,
-} from "../server/memoryOrders.js";
-import { tryUpdatePrismaOrderStatus } from "../server/orderPrismaSync.js";
+import type { OrderStatus } from "../server/orderStatus.js";
 import { prisma } from "../server/db.js";
 import { listPaymentDetailsFromDb } from "../server/paymentRepo.js";
 
@@ -19,8 +15,8 @@ export function getNotifyTargetChatId(): string | number | undefined {
   return notifyFallbackChatId;
 }
 
-/** Кнопки админа для нового in-memory заказа (создаётся из `POST /create-order`). */
-export function adminMemoryOrderInlineKeyboard(orderId: number) {
+/** Кнопки админа для заказа из БД (Prisma). */
+export function adminOrderInlineKeyboard(orderId: number) {
   return {
     inline_keyboard: [
       [
@@ -35,10 +31,30 @@ export function adminMemoryOrderInlineKeyboard(orderId: number) {
   };
 }
 
+/** @deprecated используйте adminOrderInlineKeyboard */
+export const adminMemoryOrderInlineKeyboard = adminOrderInlineKeyboard;
+
 /** `new Telegraf(process.env.BOT_TOKEN)` — без токена не создаём */
 export const bot = process.env.BOT_TOKEN
   ? new Telegraf(process.env.BOT_TOKEN)
   : undefined;
+
+async function loadOrderForBot(orderId: number) {
+  return prisma.order.findUnique({
+    where: { id: orderId },
+    include: { user: true, items: true },
+  });
+}
+
+async function updateOrderStatusInDb(orderId: number, status: OrderStatus) {
+  const row = await prisma.order.update({
+    where: { id: orderId },
+    data: { status },
+    include: { user: true, items: true },
+  });
+  console.log("ORDER STATUS UPDATE:", orderId, status);
+  return row;
+}
 
 function paidKeyboard(orderId: number) {
   return {
@@ -48,7 +64,7 @@ function paidKeyboard(orderId: number) {
   };
 }
 
-/** Реквизиты из backend (память) + кнопка «Я оплатил»; QR отдельно через sendPhoto. */
+/** Реквизиты из БД + кнопка «Я оплатил»; QR отдельно через sendPhoto. */
 async function sendPaymentDetailsToCustomer(
   telegram: Telegraf["telegram"],
   tgId: number,
@@ -151,11 +167,16 @@ if (bot) {
         return;
       }
 
-      const order = getMemoryOrder(orderId);
-      if (!order) {
+      const row = await loadOrderForBot(orderId);
+      if (!row) {
         await ctx.answerCbQuery("Заказ не найден");
         return;
       }
+
+      const order = {
+        status: row.status as OrderStatus,
+        customerTelegramId: Number(row.user.telegramId),
+      };
 
       console.log("CALLBACK:", data, "order", orderId, "status", order.status);
 
@@ -166,15 +187,14 @@ if (bot) {
           return;
         }
 
-        setMemoryOrderStatus(orderId, "ACCEPTED");
-        void tryUpdatePrismaOrderStatus(orderId, "ACCEPTED");
+        await updateOrderStatusInDb(orderId, "ACCEPTED");
 
         await ctx.editMessageText(`🟢 Заказ #${orderId} принят. Ожидаем оплату.`, {
           reply_markup: { inline_keyboard: [] },
         });
 
         const tgId = order.customerTelegramId;
-        if (tgId != null) {
+        if (tgId != null && Number.isFinite(tgId)) {
           await sendPaymentDetailsToCustomer(
             ctx.telegram,
             tgId,
@@ -198,15 +218,14 @@ if (bot) {
           return;
         }
 
-        setMemoryOrderStatus(orderId, "SHIPPED");
-        void tryUpdatePrismaOrderStatus(orderId, "SHIPPED");
+        await updateOrderStatusInDb(orderId, "SHIPPED");
 
         await ctx.editMessageText(`🚚 Заказ #${orderId} отправлен`, {
           reply_markup: { inline_keyboard: [] },
         });
 
         const tgId = order.customerTelegramId;
-        if (tgId != null) {
+        if (tgId != null && Number.isFinite(tgId)) {
           await ctx.telegram.sendMessage(tgId, "🚚 Заказ отправлен");
         }
 
@@ -216,7 +235,7 @@ if (bot) {
 
       // ---------- PAID (клиент) ----------
       if (action === "paid") {
-        if (order.customerTelegramId == null) {
+        if (!Number.isFinite(order.customerTelegramId)) {
           await ctx.answerCbQuery("Заказ без привязки к Telegram");
           return;
         }
@@ -229,8 +248,7 @@ if (bot) {
           return;
         }
 
-        setMemoryOrderStatus(orderId, "PAID_PENDING");
-        void tryUpdatePrismaOrderStatus(orderId, "PAID_PENDING");
+        await updateOrderStatusInDb(orderId, "PAID_PENDING");
 
         await ctx.editMessageText(
           `💳 Оплата заказа #${orderId}\n\nЗаявка отправлена администратору. Ожидайте подтверждения.`,
@@ -280,15 +298,14 @@ if (bot) {
           return;
         }
 
-        setMemoryOrderStatus(orderId, "CONFIRMED");
-        void tryUpdatePrismaOrderStatus(orderId, "CONFIRMED");
+        await updateOrderStatusInDb(orderId, "CONFIRMED");
 
         await ctx.editMessageText(`🟢 Оплата подтверждена · заказ #${orderId}`, {
           reply_markup: shipOnlyKeyboard(orderId),
         });
 
         const tgId = order.customerTelegramId;
-        if (tgId != null) {
+        if (tgId != null && Number.isFinite(tgId)) {
           await ctx.telegram.sendMessage(tgId, "💰 Оплата подтверждена");
         }
 
@@ -299,15 +316,14 @@ if (bot) {
       // ---------- REJECT (админ): отмена NEW или отклонение оплаты ----------
       if (action === "reject") {
         if (order.status === "NEW") {
-          setMemoryOrderStatus(orderId, "CANCELLED");
-          void tryUpdatePrismaOrderStatus(orderId, "CANCELLED");
+          await updateOrderStatusInDb(orderId, "CANCELLED");
 
           await ctx.editMessageText(`❌ Заказ #${orderId} отклонён`, {
             reply_markup: { inline_keyboard: [] },
           });
 
           const tgId = order.customerTelegramId;
-          if (tgId != null) {
+          if (tgId != null && Number.isFinite(tgId)) {
             await ctx.telegram.sendMessage(
               tgId,
               "❌ Заказ отклонён администратором."
@@ -323,15 +339,14 @@ if (bot) {
           return;
         }
 
-        setMemoryOrderStatus(orderId, "ACCEPTED");
-        void tryUpdatePrismaOrderStatus(orderId, "ACCEPTED");
+        await updateOrderStatusInDb(orderId, "ACCEPTED");
 
         await ctx.editMessageText(`❌ Оплата не подтверждена\nЗаказ #${orderId}`, {
           reply_markup: { inline_keyboard: [] },
         });
 
         const tgId = order.customerTelegramId;
-        if (tgId != null) {
+        if (tgId != null && Number.isFinite(tgId)) {
           await sendPaymentDetailsToCustomer(ctx.telegram, tgId, orderId);
         }
 

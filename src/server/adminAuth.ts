@@ -19,3 +19,14 @@ export function denyIfNotAdmin(req: Request, res: Response): boolean {
   }
   return true;
 }
+
+/** GET и др.: `?userId=` */
+export function denyIfNotAdminQuery(req: Request, res: Response): boolean {
+  const raw = req.query.userId;
+  const userId = Array.isArray(raw) ? raw[0] : raw;
+  if (!isAdmin(userId)) {
+    res.status(403).json({ message: "Нет прав" });
+    return false;
+  }
+  return true;
+}

@@ -141,7 +141,7 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
 
     setSubmitting(true);
     try {
-      const orderRes = await api.post<{ id: number }>("/orders", {
+      await api.post<{ id: number }>("/orders", {
         ...(Number.isFinite(userId) ? { userId } : {}),
         user: {
           telegramId: Number.isFinite(Number(tg?.id)) ? Number(tg?.id) : 0,
@@ -164,51 +164,7 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
         comment: comment.trim(),
       });
 
-      const prismaOrderId = orderRes.data?.id;
-
-      const createUrl = `${viteApiBase()}/create-order`;
-      const res = await fetch(createUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...(Number.isFinite(userId) ? { userId } : {}),
-          name: orderData.name,
-          phone: orderData.phone,
-          address: orderData.address,
-          items: items.map((i) => ({
-            name: i.name,
-            size: i.size,
-            quantity: i.quantity,
-            color: i.color,
-            price: i.price,
-            productId: i.productId,
-          })),
-          subtotal: totalPrice,
-          total: payTotal,
-          promoCode,
-          customerTelegramId: Number(tg?.id),
-          ...(prismaOrderId != null && Number.isFinite(prismaOrderId)
-            ? { prismaOrderId }
-            : {}),
-        }),
-      });
-
-      const payload = (await res.json().catch(() => ({}))) as {
-        error?: string;
-        orderId?: number;
-        success?: boolean;
-      };
-
-      if (res.status === 201 && payload.success !== false && payload.orderId != null) {
-        alert("Заказ отправлен");
-      } else {
-        alert(
-          payload.error ??
-            "Заказ в магазине оформлен, но не удалось создать заказ в системе уведомлений."
-        );
-      }
+      alert("Заказ отправлен");
 
       clearCart();
       setName("");

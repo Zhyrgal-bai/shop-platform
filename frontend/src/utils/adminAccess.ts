@@ -1,7 +1,6 @@
 export function getWebAppUserId(): number {
   if (typeof window === "undefined") return 0;
 
-  // @ts-expect-error Telegram WebApp
   const tg = window.Telegram?.WebApp;
 
   const rawId = tg?.initDataUnsafe?.user?.id;

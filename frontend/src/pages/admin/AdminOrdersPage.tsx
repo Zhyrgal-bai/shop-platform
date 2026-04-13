@@ -33,23 +33,36 @@ export default function AdminOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    if (!opts?.silent) {
+      setLoading(true);
+    }
     try {
-      const data = await adminService.listAllOrders();
+      const data = await adminService.fetchOrders();
       setOrders(data);
       setError(null);
     } catch (e) {
       console.error(e);
-      setError("Не удалось загрузить заказы");
-      setOrders([]);
+      if (!opts?.silent) {
+        setError("Не удалось загрузить заказы");
+        setOrders([]);
+      }
     } finally {
-      setLoading(false);
+      if (!opts?.silent) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void load();
+  }, [load]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      void load({ silent: true });
+    }, 3000);
+    return () => clearInterval(interval);
   }, [load]);
 
   const filtered = useMemo(() => {
@@ -65,6 +78,7 @@ export default function AdminOrdersPage() {
     try {
       await adminService.updateOrderStatus(id, status);
       await load();
+      window.dispatchEvent(new CustomEvent("bars-shop:admin-orders-changed"));
     } catch (e) {
       console.error(e);
       alert(
@@ -82,8 +96,8 @@ export default function AdminOrdersPage() {
       <header className="admin-dash-page__head">
         <h1 className="admin-dash-page__title">Заказы</h1>
         <p className="admin-dash-page__subtitle">
-          Статусы сохраняются в базе; дубли по одному id скрыты. Кнопки Telegram
-          работают для того же номера заказа.
+          Заказы из базы; список обновляется каждые 3 с. Кнопки в Telegram
+          меняют тот же заказ по номеру.
         </p>
       </header>
 
@@ -120,14 +134,9 @@ export default function AdminOrdersPage() {
             const canon = canonicalStatus(order.status);
             const busy = busyId === order.id;
             return (
-              <article key={`${order.source ?? "?"}-${order.id}`} className="admin-order-card">
+              <article key={order.id} className="admin-order-card">
                 <div className="admin-order-card__top">
                   <h2 className="admin-order-card__id">#{order.id}</h2>
-                  <span
-                    className={`admin-order-card__badge admin-order-card__badge--${order.source === "memory" ? "mem" : "db"}`}
-                  >
-                    {order.source === "memory" ? "Mini-app" : "БД"}
-                  </span>
                 </div>
                 <dl className="admin-order-card__dl">
                   <div>
