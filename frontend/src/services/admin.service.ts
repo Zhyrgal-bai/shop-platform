@@ -96,6 +96,11 @@ export const adminService = {
     return res.data;
   },
 
+  async getProduct(id: number): Promise<Product> {
+    const res = await api.get<Product>(`/products/${id}`);
+    return res.data;
+  },
+
   async createProduct(data: Product): Promise<Product> {
     const userId = requireAdminUserId();
     try {
@@ -129,7 +134,17 @@ export const adminService = {
   async updateProduct(
     id: number,
     patch: Partial<
-      Pick<Product, "name" | "price" | "image" | "images" | "description">
+      Pick<
+        Product,
+        | "name"
+        | "price"
+        | "image"
+        | "images"
+        | "description"
+        | "category"
+        | "discountPercent"
+        | "variants"
+      >
     >
   ): Promise<Product> {
     const userId = requireAdminUserId();
@@ -218,6 +233,21 @@ export const adminService = {
     const j = (await res.json()) as { url?: string };
     if (!j.url) throw new Error("Нет url в ответе");
     return j.url;
+  },
+
+  async uploadImages(files: File[]): Promise<string[]> {
+    if (files.length === 0) return [];
+    const userId = requireAdminUserId();
+    const form = new FormData();
+    form.append("userId", String(userId));
+    for (const f of files) {
+      form.append("files", f);
+    }
+    const url = `${viteApiBase()}/products/upload-images`;
+    const res = await fetch(url, { method: "POST", body: form });
+    if (!res.ok) throw new Error(await readFetchError(res));
+    const j = (await res.json()) as { urls?: string[] };
+    return Array.isArray(j.urls) ? j.urls : [];
   },
 
   async updateOrderStatus(

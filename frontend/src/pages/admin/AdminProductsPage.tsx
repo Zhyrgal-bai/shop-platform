@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import ProductForm from "../../components/admin/ProductForm";
 import ProductList from "../../components/admin/ProductList";
 
@@ -5,10 +6,18 @@ export default function AdminProductsPage() {
   return (
     <div className="admin-dash-page">
       <header className="admin-dash-page__head">
-        <h1 className="admin-dash-page__title">Товары</h1>
-        <p className="admin-dash-page__subtitle">
-          Добавление с вариантами цвета и размеров, список и удаление.
-        </p>
+        <div className="admin-pm-page__head-row">
+          <div>
+            <h1 className="admin-dash-page__title">Товары</h1>
+            <p className="admin-dash-page__subtitle">
+              Добавление с вариантами цвета и размеров. Полное редактирование — в
+              каталоге.
+            </p>
+          </div>
+          <Link to="/admin/products/manage" className="admin-pm-cta">
+            Управление товарами
+          </Link>
+        </div>
       </header>
 
       <section className="admin-dash-section">

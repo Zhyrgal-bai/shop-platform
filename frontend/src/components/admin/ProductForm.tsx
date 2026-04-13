@@ -2,11 +2,14 @@ import { useState } from "react";
 import axios from "axios";
 import { useAdminStore } from "../../store/admin.store";
 import { adminService } from "../../services/admin.service";
+import {
+  PRODUCT_CATEGORIES,
+  PRODUCT_SIZES,
+} from "../../constants/productCatalog";
 import type { Variant } from "../../types";
 
-const CATEGORY_OPTIONS = ["Худи", "Футболки", "Штаны"] as const;
-
-const SIZE_OPTIONS = ["S", "M", "L", "XL"] as const;
+const CATEGORY_OPTIONS = PRODUCT_CATEGORIES;
+const SIZE_OPTIONS = PRODUCT_SIZES;
 type SizeOption = (typeof SIZE_OPTIONS)[number];
 
 type SizeRow = {
@@ -29,40 +32,12 @@ function createVariantDraft(): VariantDraft {
   for (const s of SIZE_OPTIONS) {
     sizes[s] = { enabled: false, stock: "" };
   }
-  return { id: newVariantId(), color: "#333333", sizes };
-}
-
-function expandShortHex(hex: string): string | null {
-  if (/^#[0-9A-Fa-f]{3}$/.test(hex)) {
-    const r = hex[1];
-    const g = hex[2];
-    const b = hex[3];
-    return `#${r}${r}${g}${g}${b}${b}`.toUpperCase();
-  }
-  return null;
-}
-
-/** Значение для `<input type="color" />` (#rrggbb). */
-function colorInputValue(raw: string): string {
-  return parseHexColor(raw) ?? "#000000";
-}
-
-/** Returns normalized #RRGGBB or null if invalid. */
-function parseHexColor(raw: string): string | null {
-  const t = raw.trim();
-  if (!t) return null;
-  const withHash = t.startsWith("#") ? t : `#${t}`;
-  if (/^#[0-9A-Fa-f]{6}$/.test(withHash)) {
-    return withHash.toUpperCase();
-  }
-  const expanded = expandShortHex(withHash);
-  if (expanded && /^#[0-9A-Fa-f]{6}$/.test(expanded)) return expanded;
-  return null;
+  return { id: newVariantId(), color: "Чёрный", sizes };
 }
 
 function draftsToVariants(drafts: VariantDraft[]): Variant[] {
   return drafts.map((d) => {
-    const color = (parseHexColor(d.color) ?? d.color.trim()).toUpperCase();
+    const color = d.color.trim();
     const sizes = SIZE_OPTIONS.filter((sz) => d.sizes[sz].enabled).map((sz) => {
       const st = d.sizes[sz].stock;
       const stock = typeof st === "number" && !Number.isNaN(st) ? st : 0;
@@ -80,6 +55,7 @@ const ProductForm = () => {
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [category, setCategory] = useState<string>(CATEGORY_OPTIONS[0]);
+  const [discountPercent, setDiscountPercent] = useState<number | "">("");
   const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([
     createVariantDraft(),
   ]);
@@ -164,6 +140,13 @@ const ProductForm = () => {
       return;
     }
 
+    const disc =
+      discountPercent === "" ? 0 : Number(discountPercent);
+    if (!Number.isFinite(disc) || disc < 0 || disc > 100) {
+      setFormError("Скидка: число от 0 до 100.");
+      return;
+    }
+
     if (imageUrls.length === 0) {
       setFormError("Загрузите хотя бы одно изображение.");
       return;
@@ -172,16 +155,20 @@ const ProductForm = () => {
     for (let i = 0; i < variantDrafts.length; i++) {
       const d = variantDrafts[i];
       if (!d) continue;
+      if (!d.color.trim()) {
+        setFormError(`Вариант ${i + 1}: укажите название цвета (текст).`);
+        return;
+      }
       const enabled = SIZE_OPTIONS.filter((sz) => d.sizes[sz].enabled);
       if (enabled.length === 0) {
-        setFormError(`Цвет ${i + 1}: выберите хотя бы один размер.`);
+        setFormError(`Вариант ${i + 1}: выберите хотя бы один размер.`);
         return;
       }
       for (const sz of enabled) {
         const st = d.sizes[sz].stock;
         const n = typeof st === "number" ? st : Number(st);
         if (!Number.isFinite(n) || n <= 0) {
-          setFormError(`Цвет ${i + 1}: для размера ${sz} укажите количество больше нуля.`);
+          setFormError(`Вариант ${i + 1}: для размера ${sz} укажите количество больше нуля.`);
           return;
         }
       }
@@ -195,6 +182,7 @@ const ProductForm = () => {
       image: imageUrls[0] ?? "",
       images: imageUrls,
       category,
+      discountPercent: disc,
       description: "",
       variants,
     };
@@ -206,6 +194,7 @@ const ProductForm = () => {
       setPrice("");
       setImageUrls([]);
       setCategory(CATEGORY_OPTIONS[0]);
+      setDiscountPercent("");
       setVariantDrafts([createVariantDraft()]);
       alert("Товар добавлен ✅");
     } catch (err) {
@@ -265,6 +254,27 @@ const ProductForm = () => {
       </div>
 
       <div className="admin-form-section">
+        <label className="admin-field-label" htmlFor="pf-discount">
+          Скидка, %
+        </label>
+        <input
+          id="pf-discount"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={100}
+          step={1}
+          placeholder="0"
+          value={discountPercent === "" ? "" : discountPercent}
+          onChange={(e) => {
+            const v = e.target.value;
+            setDiscountPercent(v === "" ? "" : Number(v));
+          }}
+          className="admin-input"
+        />
+      </div>
+
+      <div className="admin-form-section">
         <label className="admin-field-label" htmlFor="pf-images">
           Изображения
         </label>
@@ -311,9 +321,7 @@ const ProductForm = () => {
 
       <p className="admin-form-hint">Цвета и остатки по размерам (можно несколько вариантов)</p>
 
-      {variantDrafts.map((draft, index) => {
-        const previewHex = parseHexColor(draft.color);
-        return (
+      {variantDrafts.map((draft, index) => (
           <div key={draft.id} className="admin-variant">
             <div className="admin-variant-head">
               <span className="admin-variant-title">Вариант {index + 1}</span>
@@ -330,30 +338,17 @@ const ProductForm = () => {
             </div>
 
             <div className="admin-form-section">
-              <span className="admin-field-label">Цвет варианта</span>
-              <div className="admin-color-row">
-                <div
-                  title={previewHex ?? draft.color}
-                  style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: "50%",
-                    background: previewHex ?? colorInputValue(draft.color),
-                    border: "1px solid rgba(255,255,255,0.2)",
-                    flexShrink: 0,
-                  }}
-                />
-                <input
-                  type="color"
-                  id={`pf-color-${draft.id}`}
-                  value={colorInputValue(draft.color)}
-                  onChange={(e) =>
-                    updateDraft(draft.id, { color: e.target.value.toUpperCase() })
-                  }
-                  className="admin-color-native"
-                  aria-label={`Цвет варианта ${index + 1}`}
-                />
-              </div>
+              <label className="admin-field-label" htmlFor={`pf-color-${draft.id}`}>
+                Цвет (название)
+              </label>
+              <input
+                id={`pf-color-${draft.id}`}
+                className="admin-input"
+                placeholder="Например: чёрный, белый"
+                value={draft.color}
+                onChange={(e) => updateDraft(draft.id, { color: e.target.value })}
+                autoComplete="off"
+              />
             </div>
 
             <div className="admin-form-section">
@@ -407,8 +402,7 @@ const ProductForm = () => {
               )}
             </div>
           </div>
-        );
-      })}
+        ))}
 
       <button type="button" onClick={addVariant} className="admin-secondary-btn">
         + Добавить цвет

@@ -21,13 +21,15 @@ model User {
 }
 
 model Product {
-  id          Int       @id @default(autoincrement())
-  name        String
-  price       Int
-  image       String
-  images      String[]  @default([])
-  description String?
-  sold        Int       @default(0)
+  id               Int       @id @default(autoincrement())
+  name             String
+  price            Int
+  image            String
+  images           String[]  @default([])
+  description      String?
+  category         String    @default("")
+  discountPercent  Int       @default(0) // 0–100, скидка от поля price
+  sold             Int       @default(0)
 
   variants    Variant[]
 }

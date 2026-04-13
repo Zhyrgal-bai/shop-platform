@@ -1,9 +1,11 @@
 export interface Size {
+  id?: number;
   size: string;
   stock: number;
 }
 
 export interface Variant {
+  id?: number;
   color: string;
   sizes: Size[];
 }
@@ -29,6 +31,9 @@ export interface Product {
 
   description?: string;
   category?: string;
+
+  /** Скидка в процентах 0–100 от поля `price`. */
+  discountPercent?: number;
 
   /** Легаси с API: варианты по цвету с размерами. */
   variants?: Variant[];

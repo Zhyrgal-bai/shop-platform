@@ -4,7 +4,10 @@ import type { Request, Response } from "express";
 import multer from "multer";
 import { Prisma } from "@prisma/client";
 import cors from "cors";
-import { cloudinary } from "./cloudinary.js";
+import {
+  isCloudinaryConfigured,
+  uploadImageToCloudinary,
+} from "./cloudinary.js";
 import { denyIfNotAdmin, isAdmin } from "./adminAuth.js";
 import {
   createMemoryOrder,
@@ -97,6 +100,56 @@ async function computeOrderTotalFromBody(
   return { ok: true, orderTotal, promoRaw: "" };
 }
 
+type CleanVariantInput = {
+  color: string;
+  sizes: { size: string; stock: number }[];
+};
+
+function clampDiscountPercent(n: unknown): number {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 0;
+  return Math.min(100, Math.max(0, Math.round(v)));
+}
+
+function normalizeVariantsInput(
+  raw: unknown
+): CleanVariantInput[] | { error: string } {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { error: "Нужен хотя бы один вариант" };
+  }
+  const out: CleanVariantInput[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const v = raw[i] as { color?: unknown; sizes?: unknown };
+    const color = String(v?.color ?? "").trim();
+    if (!color) {
+      return { error: `Вариант ${i + 1}: укажите название цвета` };
+    }
+    const sizesRaw = v?.sizes;
+    if (!Array.isArray(sizesRaw) || sizesRaw.length === 0) {
+      return { error: `Вариант ${i + 1}: нужны размеры` };
+    }
+    const sizes: { size: string; stock: number }[] = [];
+    for (const s of sizesRaw) {
+      const z = s as { size?: unknown; stock?: unknown };
+      const size = String(z?.size ?? "").trim();
+      const stock = Number(z?.stock);
+      if (!size || !Number.isFinite(stock) || stock < 0) {
+        return { error: `Вариант ${i + 1}: неверные размер или количество` };
+      }
+      if (stock > 0) {
+        sizes.push({ size, stock: Math.round(stock) });
+      }
+    }
+    if (sizes.length === 0) {
+      return {
+        error: `Вариант ${i + 1}: укажите остаток хотя бы для одного размера`,
+      };
+    }
+    out.push({ color, sizes });
+  }
+  return out;
+}
+
 const app = express();
 
 app.use(cors());
@@ -163,10 +216,7 @@ app.post(
     console.log("UPLOAD DATA:", req.body);
     if (!denyIfNotAdmin(req, res)) return;
     try {
-      const cn = process.env.CLOUD_NAME;
-      const ck = process.env.CLOUD_KEY;
-      const cs = process.env.CLOUD_SECRET;
-      if (!cn || !ck || !cs) {
+      if (!isCloudinaryConfigured()) {
         return res.status(503).json({
           error: "Cloudinary не настроен (CLOUD_NAME, CLOUD_KEY, CLOUD_SECRET)",
         });
@@ -175,14 +225,49 @@ app.post(
       if (!file?.buffer?.length) {
         return res.status(400).json({ error: "Нет файла" });
       }
-      const b64 = file.buffer.toString("base64");
-      const dataUri = `data:${file.mimetype || "application/octet-stream"};base64,${b64}`;
-      const result = await cloudinary.uploader.upload(dataUri, {
-        folder: "telegram-miniapp",
-      });
-      res.json({ url: result.secure_url });
+      const url = await uploadImageToCloudinary(
+        file.buffer,
+        file.mimetype || "application/octet-stream"
+      );
+      res.json({ url });
     } catch (e) {
       console.error("UPLOAD ERROR:", e);
+      res.status(500).json({ error: "upload failed" });
+    }
+  }
+);
+
+app.post(
+  "/products/upload-images",
+  upload.array("files", 15),
+  async (req: Request, res: Response) => {
+    console.log("UPLOAD-IMAGES DATA:", req.body);
+    if (!denyIfNotAdmin(req, res)) return;
+    try {
+      if (!isCloudinaryConfigured()) {
+        return res.status(503).json({
+          error: "Cloudinary не настроен (CLOUD_NAME, CLOUD_KEY, CLOUD_SECRET)",
+        });
+      }
+      const files = req.files as Express.Multer.File[] | undefined;
+      if (!files?.length) {
+        return res.status(400).json({ error: "Нет файлов" });
+      }
+      const urls: string[] = [];
+      for (const file of files) {
+        if (!file.buffer?.length) continue;
+        const url = await uploadImageToCloudinary(
+          file.buffer,
+          file.mimetype || "application/octet-stream"
+        );
+        urls.push(url);
+      }
+      if (urls.length === 0) {
+        return res.status(400).json({ error: "Пустые файлы" });
+      }
+      res.json({ urls });
+    } catch (e) {
+      console.error("UPLOAD-IMAGES ERROR:", e);
       res.status(500).json({ error: "upload failed" });
     }
   }
@@ -335,17 +420,24 @@ app.post("/products", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
     console.log("PRODUCT CREATE DATA:", req.body);
-    const { name, price, image, images, description, variants } = req.body as {
+    const body = req.body as {
       name?: unknown;
       price?: unknown;
       image?: unknown;
       images?: unknown;
       description?: unknown;
+      category?: unknown;
+      discountPercent?: unknown;
       variants?: unknown;
     };
 
+    const { name, price, image, images, description, category, discountPercent, variants } =
+      body;
+
     const rawImages = Array.isArray(images)
-      ? (images as unknown[]).filter((u) => u != null && String(u).trim() !== "").map((u) => String(u).trim())
+      ? (images as unknown[])
+          .filter((u) => u != null && String(u).trim() !== "")
+          .map((u) => String(u).trim())
       : [];
     const imageStr =
       typeof image === "string" && image.trim() !== "" ? image.trim() : "";
@@ -353,22 +445,14 @@ app.post("/products", async (req: Request, res: Response) => {
       rawImages.length > 0 ? rawImages : imageStr ? [imageStr] : [];
     const primaryImage = imageList[0] ?? "";
 
-    if (
-      !name ||
-      price == null ||
-      !primaryImage ||
-      !Array.isArray(variants) ||
-      variants.length === 0
-    ) {
-      return res.status(400).json({ error: "Неверные данные" });
+    const cleanVariants = normalizeVariantsInput(variants);
+    if ("error" in cleanVariants) {
+      return res.status(400).json({ error: cleanVariants.error });
     }
 
-    const cleanVariants = variants.map((v: any) => ({
-      color: v.color,
-      sizes: (v.sizes || []).filter(
-        (s: any) => s.size && Number(s.stock) > 0
-      ),
-    }));
+    if (!name || price == null || !primaryImage) {
+      return res.status(400).json({ error: "Неверные данные" });
+    }
 
     const product = await prisma.product.create({
       data: {
@@ -377,13 +461,18 @@ app.post("/products", async (req: Request, res: Response) => {
         image: primaryImage,
         images: imageList,
         description: description != null ? String(description) : "",
+        category:
+          category != null && String(category).trim() !== ""
+            ? String(category).trim()
+            : "",
+        discountPercent: clampDiscountPercent(discountPercent),
         variants: {
-          create: cleanVariants.map((v: any) => ({
+          create: cleanVariants.map((v) => ({
             color: v.color,
             sizes: {
-              create: v.sizes.map((s: any) => ({
+              create: v.sizes.map((s) => ({
                 size: s.size,
-                stock: Number(s.stock),
+                stock: s.stock,
               })),
             },
           })),
@@ -670,6 +759,30 @@ app.get("/products", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/products/:id", async (req: Request, res: Response) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ error: "Неверный id" });
+    }
+    const product = await prisma.product.findUnique({
+      where: { id },
+      include: {
+        variants: {
+          include: { sizes: true },
+        },
+      },
+    });
+    if (!product) {
+      return res.status(404).json({ error: "Товар не найден" });
+    }
+    res.json(product);
+  } catch (error) {
+    console.error("GET PRODUCT ERROR:", error);
+    res.status(500).json({ error: "Ошибка получения товара" });
+  }
+});
+
 // ================== LIST ORDERS (admin, Prisma) ==================
 app.post("/orders/list", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
@@ -872,12 +985,15 @@ app.put("/products/:id", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
     console.log("PRODUCT UPDATE DATA:", req.body);
-    const { name, price, image, images, description } = req.body as {
+    const body = req.body as {
       name?: unknown;
       price?: unknown;
       image?: unknown;
       images?: unknown;
       description?: unknown;
+      category?: unknown;
+      discountPercent?: unknown;
+      variants?: unknown;
     };
 
     const id = Number(req.params.id);
@@ -885,51 +1001,116 @@ app.put("/products/:id", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Неверный id" });
     }
 
+    const {
+      name,
+      price,
+      image,
+      images,
+      description,
+      category,
+      discountPercent,
+      variants,
+    } = body;
+
+    const hasVariantUpdate = variants !== undefined;
     if (
       name === undefined &&
       price === undefined &&
       image === undefined &&
       images === undefined &&
-      description === undefined
+      description === undefined &&
+      category === undefined &&
+      discountPercent === undefined &&
+      !hasVariantUpdate
     ) {
       return res.status(400).json({ error: "Нет полей для обновления" });
     }
 
-    const data: {
+    let cleanVariants: CleanVariantInput[] | undefined;
+    if (hasVariantUpdate) {
+      const parsed = normalizeVariantsInput(variants);
+      if ("error" in parsed) {
+        return res.status(400).json({ error: parsed.error });
+      }
+      cleanVariants = parsed;
+    }
+
+    const scalar: {
       name?: string;
       price?: number;
       image?: string;
       images?: string[];
       description?: string | null;
+      category?: string;
+      discountPercent?: number;
     } = {};
-    if (name !== undefined) data.name = String(name);
-    if (price !== undefined) data.price = Number(price);
+
+    if (name !== undefined) scalar.name = String(name);
+    if (price !== undefined) scalar.price = Number(price);
+    if (discountPercent !== undefined) {
+      scalar.discountPercent = clampDiscountPercent(discountPercent);
+    }
+    if (category !== undefined) {
+      scalar.category = String(category).trim();
+    }
     if (images !== undefined) {
       const list = Array.isArray(images)
         ? images
             .filter((u) => u != null && String(u).trim() !== "")
             .map((u) => String(u).trim())
         : [];
-      data.images = list;
+      scalar.images = list;
       const firstImg = list[0];
       if (firstImg !== undefined) {
-        data.image = firstImg;
+        scalar.image = firstImg;
       }
     }
     if (image !== undefined) {
-      data.image = String(image);
+      scalar.image = String(image);
       if (images === undefined) {
-        data.images = [String(image)];
+        scalar.images = [String(image)];
       }
     }
-    if (description !== undefined) data.description = description === null ? null : String(description);
+    if (description !== undefined) {
+      scalar.description = description === null ? null : String(description);
+    }
 
-    const product = await prisma.product.update({
-      where: { id },
-      data,
-      include: {
+    const product = await prisma.$transaction(async (tx) => {
+      if (cleanVariants) {
+        await tx.size.deleteMany({
+          where: { variant: { productId: id } },
+        });
+        await tx.variant.deleteMany({ where: { productId: id } });
+        for (const v of cleanVariants) {
+          await tx.variant.create({
+            data: {
+              productId: id,
+              color: v.color,
+              sizes: {
+                create: v.sizes.map((s) => ({
+                  size: s.size,
+                  stock: s.stock,
+                })),
+              },
+            },
+          });
+        }
+      }
+
+      const include = {
         variants: { include: { sizes: true } },
-      },
+      };
+      if (Object.keys(scalar).length > 0) {
+        return tx.product.update({
+          where: { id },
+          data: scalar,
+          include,
+        });
+      }
+      return tx.product.findUniqueOrThrow({
+        where: { id },
+        include,
+      });
     });
 
     res.json(product);

@@ -3,6 +3,7 @@ import { NavLink, Outlet } from "react-router-dom";
 const nav = [
   { to: "/admin/orders", label: "Заказы", icon: "📦" },
   { to: "/admin/products", label: "Товары", icon: "➕" },
+  { to: "/admin/products/manage", label: "Каталог", icon: "🛍️" },
   { to: "/admin/analytics", label: "Аналитика", icon: "📊" },
   { to: "/admin/settings", label: "Настройки", icon: "⚙️" },
 ] as const;

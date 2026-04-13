@@ -1,6 +1,23 @@
 import type { Product, Variant } from "../types";
 
 const DEFAULT_SIZE_STOCK = 10;
+
+/** Скидка 0–100 с поля товара. */
+export function getDiscountPercent(product: Product): number {
+  const d = product.discountPercent;
+  if (d == null || !Number.isFinite(Number(d)) || Number(d) <= 0) return 0;
+  return Math.min(100, Math.max(0, Math.round(Number(d))));
+}
+
+/** Цена со скидкой (целые сомы), без изменения `price` в БД. */
+export function getEffectivePrice(product: Product): number {
+  const base = Number(product.price);
+  if (!Number.isFinite(base) || base < 0) return 0;
+  const pct = getDiscountPercent(product);
+  if (pct <= 0) return Math.round(base);
+  return Math.max(0, Math.round((base * (100 - pct)) / 100));
+}
+
 const DEFAULT_SIZE_LABEL = "M";
 const DEFAULT_COLOR_NAME = "Белый";
 const DEFAULT_COLOR_HEX = "#ffffff";

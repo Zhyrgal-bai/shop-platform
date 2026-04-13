@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import PaymentDetailsPanel from "../../components/admin/PaymentDetailsPanel";
 import PromoCodesPanel from "../../components/admin/PromoCodesPanel";
 
@@ -10,6 +11,18 @@ export default function AdminSettingsPage() {
           Реквизиты для оплаты и промокоды.
         </p>
       </header>
+
+      <section className="admin-dash-section">
+        <h2 className="admin-dash-section__title">Товары</h2>
+        <div className="admin-dash-card admin-pm-settings-card">
+          <p className="admin-form-hint admin-pm-settings-hint">
+            Редактирование цен, фото, вариантов и скидок.
+          </p>
+          <Link to="/admin/products/manage" className="admin-pm-cta">
+            Управление товарами
+          </Link>
+        </div>
+      </section>
 
       <section className="admin-dash-section">
         <div className="admin-dash-card">

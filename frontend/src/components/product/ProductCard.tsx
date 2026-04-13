@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Product, ProductColor, Size } from "../../types";
 import { useCartStore } from "../../store/useCartStore";
 import {
+  getDiscountPercent,
+  getEffectivePrice,
   getNormalizedVariants,
   getPrimaryImage,
   isOutOfStock,
@@ -90,6 +92,9 @@ export default function ProductCard({ product, showToast }: Props) {
 
   const quantity = cartItem?.quantity ?? 0;
 
+  const discountPct = getDiscountPercent(product);
+  const displayPrice = getEffectivePrice(product);
+
   const upsertQuantity = (nextQuantity: number) => {
     if (!selectedSize || outOfStock || lineColor === null) return;
     if (selectedStock <= 0) return;
@@ -101,7 +106,7 @@ export default function ProductCard({ product, showToast }: Props) {
     addItem({
       productId: product.id!,
       name: product.name,
-      price: product.price,
+      price: displayPrice,
       image: getPrimaryImage(product),
       size: selectedSize,
       color: lineColor,
@@ -224,9 +229,24 @@ export default function ProductCard({ product, showToast }: Props) {
         )}
 
         <div className="product-bottom">
-          <span className="product-price">
-            {product.price}{" "}
-            <span className="product-price-currency">сом</span>
+          <span className="product-price-block">
+            {discountPct > 0 ? (
+              <>
+                <span className="product-price-old" aria-label="Без скидки">
+                  {product.price}{" "}
+                  <span className="product-price-currency">сом</span>
+                </span>
+                <span className="product-price product-price--sale">
+                  {displayPrice}{" "}
+                  <span className="product-price-currency">сом</span>
+                </span>
+              </>
+            ) : (
+              <span className="product-price">
+                {product.price}{" "}
+                <span className="product-price-currency">сом</span>
+              </span>
+            )}
           </span>
 
           <div className="product-actions">
