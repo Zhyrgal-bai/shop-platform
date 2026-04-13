@@ -11,7 +11,7 @@ import {
 import { denyIfNotAdmin, denyIfNotAdminQuery, isAdmin } from "./adminAuth.js";
 import { isValidOrderStatus, type OrderStatus } from "./orderStatus.js";
 import {
-  adminOrderInlineKeyboard,
+  adminNewOrderNotifyKeyboard,
   bot,
   getNotifyTargetChatId,
 } from "../bot/bot.js";
@@ -515,6 +515,7 @@ async function performOrderStatusUpdate(
       void notifyAfterOrderStatusChangeFromApi({
         id: withUser.id,
         status: withUser.status,
+        total: withUser.total,
         user: { telegramId: withUser.user.telegramId },
       });
     }
@@ -583,12 +584,56 @@ app.put("/orders/:id", async (req: Request, res: Response) => {
     if (!Number.isFinite(orderId)) {
       return res.status(400).json({ error: "Неверный id" });
     }
-    const { status } = req.body as { status?: unknown };
-    const result = await performOrderStatusUpdate(orderId, status);
-    if (!result.ok) {
-      return res.status(result.statusCode).json({ error: result.error });
+    const body = req.body as { status?: unknown; tracking?: unknown };
+    const hasTracking = Object.prototype.hasOwnProperty.call(body, "tracking");
+    const hasStatus =
+      body.status !== undefined &&
+      body.status !== null &&
+      String(body.status).trim() !== "";
+
+    if (!hasStatus && !hasTracking) {
+      return res
+        .status(400)
+        .json({ error: "Укажите status и/или tracking" });
     }
-    return res.json(result.body);
+
+    const data: { status?: OrderStatus; tracking?: string | null } = {};
+    if (hasTracking) {
+      const t = body.tracking;
+      data.tracking =
+        t === null || t === undefined || String(t).trim() === ""
+          ? null
+          : String(t).trim();
+    }
+    if (hasStatus) {
+      const stRaw = String(body.status);
+      if (!isValidOrderStatus(stRaw)) {
+        return res.status(400).json({ error: "Нужен допустимый status" });
+      }
+      data.status = stRaw as OrderStatus;
+    }
+
+    const exists = await prisma.order.findUnique({ where: { id: orderId } });
+    if (!exists) {
+      return res.status(404).json({ error: "Заказ не найден" });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data,
+      include: { user: true },
+    });
+
+    if (hasStatus) {
+      void notifyAfterOrderStatusChangeFromApi({
+        id: updated.id,
+        status: updated.status,
+        total: updated.total,
+        user: { telegramId: updated.user.telegramId },
+      });
+    }
+
+    return res.json(updated);
   } catch (e) {
     console.error("PUT ORDER ERROR:", e);
     res.status(500).json({ error: "Server error" });
@@ -699,6 +744,8 @@ async function fetchAdminOrdersPayload() {
   return rows.map((o) => {
     const phone =
       (o as { customerPhone?: string | null }).customerPhone?.trim() || "—";
+    const tracking =
+      (o as { tracking?: string | null }).tracking?.trim() || null;
     return {
       id: o.id,
       name: o.user.name?.trim() || "Гость",
@@ -706,9 +753,39 @@ async function fetchAdminOrdersPayload() {
       status: o.status,
       statusText: orderStatusRu(o.status),
       total: o.total,
+      tracking,
     };
   });
 }
+
+// ================== MY ORDERS (mini app, по Telegram userId) ==================
+app.get("/orders/my", async (req: Request, res: Response) => {
+  try {
+    const raw = req.query.userId;
+    const q = Array.isArray(raw) ? raw[0] : raw;
+    const telegramId = Number(q);
+    if (!Number.isFinite(telegramId) || telegramId <= 0) {
+      return res.status(400).json({ error: "Нужен userId (Telegram)" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { telegramId: BigInt(telegramId) },
+    });
+    if (!user) {
+      return res.json([]);
+    }
+
+    const orders = await prisma.order.findMany({
+      where: { userId: user.id },
+      orderBy: { id: "desc" },
+      include: { items: true },
+    });
+    res.json(orders);
+  } catch (e) {
+    console.error("GET /orders/my:", e);
+    res.status(500).json({ error: "Ошибка загрузки заказов" });
+  }
+});
 
 // ================== LIST ORDERS (admin, Prisma) ==================
 app.get("/orders", async (req: Request, res: Response) => {
@@ -760,7 +837,7 @@ async function notifyAdminNewOrderTelegram(input: {
   try {
     if (bot) {
       await bot.telegram.sendMessage(chatId, message, {
-        reply_markup: adminOrderInlineKeyboard(input.orderId),
+        reply_markup: adminNewOrderNotifyKeyboard(input.orderId),
       });
       console.log("TELEGRAM ORDER NOTIFY: ok", input.orderId);
       return;
@@ -780,7 +857,7 @@ async function notifyAdminNewOrderTelegram(input: {
         body: JSON.stringify({
           chat_id: chatId,
           text: message,
-          reply_markup: adminOrderInlineKeyboard(input.orderId),
+          reply_markup: adminNewOrderNotifyKeyboard(input.orderId),
         }),
       }
     );

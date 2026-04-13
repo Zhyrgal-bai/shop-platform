@@ -86,6 +86,7 @@ export type AdminOrderListItem = {
   status: string;
   statusText: string;
   total: number;
+  tracking?: string | null;
 };
 
 export type AdminAnalytics = {
@@ -254,6 +255,18 @@ export const adminService = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, userId }),
+    });
+    if (!res.ok) throw new Error(await readFetchError(res));
+  },
+
+  /** Статус доставки / комментарий (только tracking, без смены status). */
+  async updateOrderTracking(id: number, tracking: string): Promise<void> {
+    const userId = requireAdminUserId();
+    const url = `${viteApiBase()}/orders/${id}`;
+    const res = await fetch(url, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tracking, userId }),
     });
     if (!res.ok) throw new Error(await readFetchError(res));
   },

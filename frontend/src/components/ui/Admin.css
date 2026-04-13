@@ -850,6 +850,48 @@
   font-weight: 600;
 }
 
+.admin-order-card__tracking {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-order-card__tracking-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.admin-order-card__tracking-input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 52px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  color: #f3f4f6;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.admin-order-card__tracking-input:disabled {
+  opacity: 0.5;
+}
+
+.admin-order-card__tracking-input::placeholder {
+  color: #6b7280;
+}
+
+.admin-order-card__btn--tracking-save {
+  align-self: flex-start;
+  background: rgba(148, 163, 184, 0.35);
+}
+
 .admin-order-card__actions {
   display: flex;
   flex-wrap: wrap;

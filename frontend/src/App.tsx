@@ -3,6 +3,7 @@ import CartPage from "./pages/CartPage";
 import CheckoutPage from "./pages/CheckoutPage";
 import AdminApp from "./pages/admin/AdminApp";
 import FAQPage from "./pages/FAQPage";
+import MyOrders from "./pages/MyOrders";
 import { useState } from "react";
 import { useCartStore } from "./store/useCartStore";
 import { isAdminPanelVisible } from "@/utils/admin";
@@ -13,7 +14,7 @@ import SideMenu from "./components/layout/SideMenu";
 import FloatingCart from "./components/layout/FloatingCart";
 export default function App() {
   const [page, setPage] = useState<
-    "home" | "cart" | "checkout" | "admin" | "faq"
+    "home" | "cart" | "checkout" | "admin" | "faq" | "my-orders"
   >("home");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -24,7 +25,7 @@ export default function App() {
   const handleMenuClose = () => setIsMenuOpen(false);
 
   const handleNav = (
-    target: "home" | "cart" | "checkout" | "admin" | "faq"
+    target: "home" | "cart" | "checkout" | "admin" | "faq" | "my-orders"
   ) => {
     setPage(target);
     setIsMenuOpen(false);
@@ -60,12 +61,14 @@ export default function App() {
         onClose={handleMenuClose}
         currentPage={page}
         onNavToHome={() => handleNav("home")}
+        onNavToMyOrders={() => handleNav("my-orders")}
         onNavToAdmin={goAdminSection}
       />
 
       <div className="content app__content">
         {page === "home" && <HomePage />}
         {page === "faq" && <FAQPage />}
+        {page === "my-orders" && <MyOrders />}
         {page === "cart" && (
           <CartPage onGoToCheckout={() => setPage("checkout")} />
         )}

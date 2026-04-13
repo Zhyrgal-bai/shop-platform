@@ -1,0 +1,126 @@
+.my-orders {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 16px 16px 32px;
+}
+
+.my-orders__head {
+  margin-bottom: 20px;
+}
+
+.my-orders__title {
+  margin: 0 0 6px;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+}
+
+.my-orders__subtitle {
+  margin: 0;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.my-orders__muted,
+.my-orders__error {
+  font-size: 0.95rem;
+}
+
+.my-orders__muted {
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.my-orders__error {
+  color: #f87171;
+}
+
+.my-orders__list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.my-orders__card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.25);
+}
+
+.my-orders__card-title {
+  margin: 0 0 12px;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.my-orders__row {
+  margin: 0 0 8px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.92rem;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.my-orders__label {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.my-orders__status {
+  font-weight: 600;
+  text-align: right;
+}
+
+.my-orders__tracking {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.my-orders__pay-qr {
+  margin: 12px 0 4px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+
+.my-orders__pay-qr-title {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.my-orders__pay-qr-img {
+  display: block;
+  margin: 0 auto;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.my-orders__pay-qr-hint {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.my-orders__items {
+  margin: 12px 0 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.45;
+}
+
+.my-orders__items li {
+  margin-bottom: 4px;
+}

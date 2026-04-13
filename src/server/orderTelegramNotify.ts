@@ -1,10 +1,21 @@
-import { bot, getNotifyTargetChatId } from "../bot/bot.js";
+import {
+  bot,
+  getNotifyTargetChatId,
+  sendAcceptedPaymentPromptForOrderFromApi,
+} from "../bot/bot.js";
 import type { OrderStatus } from "./orderStatus.js";
 
-function customerTextForStatus(status: OrderStatus): string | null {
+function customerTextForStatus(
+  status: OrderStatus,
+  orderId: number
+): string | null {
   if (status === "ACCEPTED") return "Заказ принят";
-  if (status === "CONFIRMED") return "Оплата подтверждена";
-  if (status === "SHIPPED") return "Отправлено";
+  if (status === "CONFIRMED") {
+    return `💰 Оплата подтверждена!\n\nВаш заказ #${orderId} готовится к отправке 📦`;
+  }
+  if (status === "SHIPPED") {
+    return `🚚 Заказ отправлен!\n\nВаш заказ #${orderId} уже в пути 📦`;
+  }
   return null;
 }
 
@@ -39,21 +50,34 @@ async function sendTelegramText(
 export async function notifyAfterOrderStatusChangeFromApi(order: {
   id: number;
   status: string;
+  total: number;
   user: { telegramId: bigint };
 }): Promise<void> {
   const status = order.status as OrderStatus;
-  const text = customerTextForStatus(status);
   const tgId = Number(order.user.telegramId);
 
-  if (text != null && Number.isFinite(tgId) && tgId > 0) {
-    if (bot) {
-      try {
-        await bot.telegram.sendMessage(tgId, text);
-      } catch (e) {
-        console.error("notify customer (bot):", e);
+  if (status === "ACCEPTED" && Number.isFinite(tgId) && tgId > 0) {
+    try {
+      await sendAcceptedPaymentPromptForOrderFromApi({
+        id: order.id,
+        total: order.total,
+        user: { telegramId: order.user.telegramId },
+      });
+    } catch (e) {
+      console.error("notify customer ACCEPTED payment prompt:", e);
+    }
+  } else {
+    const text = customerTextForStatus(status, order.id);
+    if (text != null && Number.isFinite(tgId) && tgId > 0) {
+      if (bot) {
+        try {
+          await bot.telegram.sendMessage(tgId, text);
+        } catch (e) {
+          console.error("notify customer (bot):", e);
+        }
+      } else {
+        await sendTelegramText(tgId, text);
       }
-    } else {
-      await sendTelegramText(tgId, text);
     }
   }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   adminService,
   type AdminOrderListItem,
@@ -32,6 +32,11 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const [busyTrackingId, setBusyTrackingId] = useState<number | null>(null);
+  const [trackingDraft, setTrackingDraft] = useState<Record<number, string>>(
+    {}
+  );
+  const trackingDirtyRef = useRef<Set<number>>(new Set());
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!opts?.silent) {
@@ -70,6 +75,18 @@ export default function AdminOrdersPage() {
     return orders.filter((o) => canonicalStatus(o.status) === filter);
   }, [orders, filter]);
 
+  useEffect(() => {
+    setTrackingDraft((prev) => {
+      const next = { ...prev };
+      for (const o of orders) {
+        if (!trackingDirtyRef.current.has(o.id)) {
+          next[o.id] = o.tracking ?? "";
+        }
+      }
+      return next;
+    });
+  }, [orders]);
+
   async function applyStatus(
     id: number,
     status: "ACCEPTED" | "CONFIRMED" | "SHIPPED"
@@ -88,6 +105,24 @@ export default function AdminOrdersPage() {
       );
     } finally {
       setBusyId(null);
+    }
+  }
+
+  async function saveTracking(id: number) {
+    const text = (trackingDraft[id] ?? "").trim();
+    setBusyTrackingId(id);
+    try {
+      await adminService.updateOrderTracking(id, text);
+      trackingDirtyRef.current.delete(id);
+      await load();
+      window.dispatchEvent(new CustomEvent("bars-shop:admin-orders-changed"));
+    } catch (e) {
+      console.error(e);
+      alert(
+        e instanceof Error ? e.message : "Не удалось сохранить комментарий"
+      );
+    } finally {
+      setBusyTrackingId(null);
     }
   }
 
@@ -133,6 +168,7 @@ export default function AdminOrdersPage() {
           {filtered.map((order) => {
             const canon = canonicalStatus(order.status);
             const busy = busyId === order.id;
+            const busyTr = busyTrackingId === order.id;
             return (
               <article key={order.id} className="admin-order-card">
                 <div className="admin-order-card__top">
@@ -161,6 +197,37 @@ export default function AdminOrdersPage() {
                     </dd>
                   </div>
                 </dl>
+                <div className="admin-order-card__tracking">
+                  <label
+                    className="admin-order-card__tracking-label"
+                    htmlFor={`order-tracking-${order.id}`}
+                  >
+                    Статус доставки / комментарий
+                  </label>
+                  <textarea
+                    id={`order-tracking-${order.id}`}
+                    className="admin-order-card__tracking-input"
+                    rows={2}
+                    value={trackingDraft[order.id] ?? ""}
+                    disabled={busy || busyTr}
+                    placeholder="Например: Курьер выехал"
+                    onChange={(e) => {
+                      trackingDirtyRef.current.add(order.id);
+                      setTrackingDraft((prev) => ({
+                        ...prev,
+                        [order.id]: e.target.value,
+                      }));
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="admin-order-card__btn admin-order-card__btn--tracking-save"
+                    disabled={busy || busyTr}
+                    onClick={() => void saveTracking(order.id)}
+                  >
+                    {busyTr ? "Сохранение…" : "Сохранить"}
+                  </button>
+                </div>
                 <div className="admin-order-card__actions">
                   <button
                     type="button"

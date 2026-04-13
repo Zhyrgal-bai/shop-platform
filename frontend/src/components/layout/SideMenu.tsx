@@ -8,7 +8,7 @@ import {
 } from "../../utils/telegramUserMark";
 import "./bars-shell.css";
 
-type AppNavPage = "home" | "cart" | "checkout" | "admin" | "faq";
+type AppNavPage = "home" | "cart" | "checkout" | "admin" | "faq" | "my-orders";
 
 type AdminSection = "orders" | "products" | "analytics" | "settings";
 
@@ -17,6 +17,7 @@ type SideMenuProps = {
   onClose: () => void;
   currentPage: AppNavPage;
   onNavToHome: () => void;
+  onNavToMyOrders: () => void;
   onNavToAdmin: (section: AdminSection) => void;
 };
 
@@ -55,6 +56,7 @@ export default function SideMenu({
   onClose,
   currentPage,
   onNavToHome,
+  onNavToMyOrders,
   onNavToAdmin,
 }: SideMenuProps) {
   const hash = useSyncExternalStore(subscribeHash, readHash, () => "");
@@ -72,6 +74,7 @@ export default function SideMenu({
   }, [open]);
 
   const homeActive = currentPage === "home";
+  const myOrdersActive = currentPage === "my-orders";
 
   return (
     <AnimatePresence>
@@ -135,6 +138,20 @@ export default function SideMenu({
                     🏠
                   </span>
                   Магазин
+                </button>
+
+                <button
+                  type="button"
+                  className={`bars-drawer__link${myOrdersActive ? " bars-drawer__link--active" : ""}`}
+                  onClick={() => {
+                    onNavToMyOrders();
+                    onClose();
+                  }}
+                >
+                  <span className="bars-drawer__link-icon" aria-hidden>
+                    📋
+                  </span>
+                  Мои заказы
                 </button>
 
                 {admin && (

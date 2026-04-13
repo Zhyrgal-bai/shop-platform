@@ -61,6 +61,7 @@ model Order {
   total     Int
   status    String   @default("NEW") // NEW | ACCEPTED | PAID_PENDING | CONFIRMED | SHIPPED | CANCELLED
   customerPhone String? // телефон из формы оформления
+  tracking  String? // статус доставки / комментарий для клиента
 
   items     OrderItem[]
 }
