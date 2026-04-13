@@ -1,6 +1,7 @@
 import { useState } from "react";
 import axios from "axios";
 import { useAdminStore } from "../../store/admin.store";
+import { adminService } from "../../services/admin.service";
 import type { Variant } from "../../types";
 
 const CATEGORY_OPTIONS = ["Худи", "Футболки", "Штаны"] as const;
@@ -28,7 +29,7 @@ function createVariantDraft(): VariantDraft {
   for (const s of SIZE_OPTIONS) {
     sizes[s] = { enabled: false, stock: "" };
   }
-  return { id: newVariantId(), color: "", sizes };
+  return { id: newVariantId(), color: "#333333", sizes };
 }
 
 function expandShortHex(hex: string): string | null {
@@ -39,6 +40,11 @@ function expandShortHex(hex: string): string | null {
     return `#${r}${r}${g}${g}${b}${b}`.toUpperCase();
   }
   return null;
+}
+
+/** Значение для `<input type="color" />` (#rrggbb). */
+function colorInputValue(raw: string): string {
+  return parseHexColor(raw) ?? "#000000";
 }
 
 /** Returns normalized #RRGGBB or null if invalid. */
@@ -56,7 +62,7 @@ function parseHexColor(raw: string): string | null {
 
 function draftsToVariants(drafts: VariantDraft[]): Variant[] {
   return drafts.map((d) => {
-    const color = parseHexColor(d.color) ?? d.color.trim();
+    const color = (parseHexColor(d.color) ?? d.color.trim()).toUpperCase();
     const sizes = SIZE_OPTIONS.filter((sz) => d.sizes[sz].enabled).map((sz) => {
       const st = d.sizes[sz].stock;
       const stock = typeof st === "number" && !Number.isNaN(st) ? st : 0;
@@ -71,7 +77,8 @@ const ProductForm = () => {
 
   const [name, setName] = useState("");
   const [price, setPrice] = useState<number | "">("");
-  const [image, setImage] = useState("");
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [category, setCategory] = useState<string>(CATEGORY_OPTIONS[0]);
   const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([
     createVariantDraft(),
@@ -124,6 +131,29 @@ const ProductForm = () => {
     );
   };
 
+  const handleImageFiles = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+    setUploadingImages(true);
+    setFormError(null);
+    try {
+      const next = [...imageUrls];
+      for (const file of Array.from(files)) {
+        const url = await adminService.uploadImage(file);
+        next.push(url);
+      }
+      setImageUrls(next);
+    } catch (err) {
+      console.error(err);
+      setFormError(
+        err instanceof Error ? err.message : "Не удалось загрузить изображение"
+      );
+    } finally {
+      setUploadingImages(false);
+      e.target.value = "";
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -134,13 +164,14 @@ const ProductForm = () => {
       return;
     }
 
+    if (imageUrls.length === 0) {
+      setFormError("Загрузите хотя бы одно изображение.");
+      return;
+    }
+
     for (let i = 0; i < variantDrafts.length; i++) {
       const d = variantDrafts[i];
-      const hex = parseHexColor(d.color);
-      if (!hex) {
-        setFormError(`Цвет ${i + 1}: введите корректный HEX (например #1a1a1a).`);
-        return;
-      }
+      if (!d) continue;
       const enabled = SIZE_OPTIONS.filter((sz) => d.sizes[sz].enabled);
       if (enabled.length === 0) {
         setFormError(`Цвет ${i + 1}: выберите хотя бы один размер.`);
@@ -161,7 +192,8 @@ const ProductForm = () => {
     const data = {
       name: name.trim(),
       price: priceNum,
-      image: image.trim(),
+      image: imageUrls[0] ?? "",
+      images: imageUrls,
       category,
       description: "",
       variants,
@@ -172,7 +204,7 @@ const ProductForm = () => {
       setFormError(null);
       setName("");
       setPrice("");
-      setImage("");
+      setImageUrls([]);
       setCategory(CATEGORY_OPTIONS[0]);
       setVariantDrafts([createVariantDraft()]);
       alert("Товар добавлен ✅");
@@ -233,23 +265,27 @@ const ProductForm = () => {
       </div>
 
       <div className="admin-form-section">
-        <label className="admin-field-label" htmlFor="pf-image">
-          URL изображения
+        <label className="admin-field-label" htmlFor="pf-images">
+          Изображения
         </label>
         <input
-          id="pf-image"
-          placeholder="https://…"
-          value={image}
-          onChange={(e) => setImage(e.target.value)}
+          id="pf-images"
+          type="file"
+          accept="image/*"
+          multiple
           className="admin-input"
-          inputMode="url"
+          disabled={uploadingImages}
+          onChange={(e) => void handleImageFiles(e)}
         />
-        {image.trim() && (
-          <img
-            src={image}
-            alt="Предпросмотр изображения товара"
-            className="image-preview"
-          />
+        {uploadingImages && (
+          <p className="admin-form-hint">Загрузка в Cloudinary…</p>
+        )}
+        {imageUrls.length > 0 && (
+          <div className="admin-multi-preview">
+            {imageUrls.map((src) => (
+              <img key={src} src={src} alt="" className="image-preview" />
+            ))}
+          </div>
         )}
       </div>
 
@@ -294,24 +330,28 @@ const ProductForm = () => {
             </div>
 
             <div className="admin-form-section">
-              <label className="admin-field-label" htmlFor={`pf-color-${draft.id}`}>
-                Цвет (HEX)
-              </label>
+              <span className="admin-field-label">Цвет варианта</span>
               <div className="admin-color-row">
                 <div
-                  className="admin-color-swatch"
+                  title={previewHex ?? draft.color}
                   style={{
-                    backgroundColor: previewHex ?? "rgba(255,255,255,0.06)",
+                    width: 20,
+                    height: 20,
+                    borderRadius: "50%",
+                    background: previewHex ?? colorInputValue(draft.color),
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    flexShrink: 0,
                   }}
-                  title={previewHex ?? "Нет цвета"}
                 />
                 <input
+                  type="color"
                   id={`pf-color-${draft.id}`}
-                  placeholder="HEX цвет (#000000)"
-                  value={draft.color}
-                  onChange={(e) => updateDraft(draft.id, { color: e.target.value })}
-                  className="admin-input admin-input--grow"
-                  autoComplete="off"
+                  value={colorInputValue(draft.color)}
+                  onChange={(e) =>
+                    updateDraft(draft.id, { color: e.target.value.toUpperCase() })
+                  }
+                  className="admin-color-native"
+                  aria-label={`Цвет варианта ${index + 1}`}
                 />
               </div>
             </div>

@@ -25,6 +25,7 @@ model Product {
   name        String
   price       Int
   image       String
+  images      String[]  @default([])
   description String?
   sold        Int       @default(0)
 

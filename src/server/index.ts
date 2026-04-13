@@ -1,8 +1,10 @@
 import "dotenv/config";
 import express from "express";
 import type { Request, Response } from "express";
+import multer from "multer";
 import { Prisma } from "@prisma/client";
 import cors from "cors";
+import { cloudinary } from "./cloudinary.js";
 import { denyIfNotAdmin, isAdmin } from "./adminAuth.js";
 import {
   createMemoryOrder,
@@ -12,6 +14,7 @@ import {
   setMemoryOrderStatus,
   type MemoryOrder,
   type MemoryOrderItem,
+  type OrderStatus,
 } from "./memoryOrders.js";
 import {
   adminMemoryOrderInlineKeyboard,
@@ -31,6 +34,11 @@ import {
   listPromosFromDb,
   tryApplyPromoDb,
 } from "./promoRepo.js";
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
 
 console.log("BOT TOKEN:", process.env.BOT_TOKEN ? "set" : "missing");
 console.log("CHAT ID env:", process.env.CHAT_ID ?? "(empty)");
@@ -146,6 +154,39 @@ app.post("/check-admin", (req: Request, res: Response) => {
   const { userId } = req.body as { userId?: unknown };
   res.json({ isAdmin: isAdmin(userId) });
 });
+
+// ================== UPLOAD (Cloudinary, admin) ==================
+app.post(
+  "/upload",
+  upload.single("file"),
+  async (req: Request, res: Response) => {
+    console.log("UPLOAD DATA:", req.body);
+    if (!denyIfNotAdmin(req, res)) return;
+    try {
+      const cn = process.env.CLOUD_NAME;
+      const ck = process.env.CLOUD_KEY;
+      const cs = process.env.CLOUD_SECRET;
+      if (!cn || !ck || !cs) {
+        return res.status(503).json({
+          error: "Cloudinary не настроен (CLOUD_NAME, CLOUD_KEY, CLOUD_SECRET)",
+        });
+      }
+      const file = req.file;
+      if (!file?.buffer?.length) {
+        return res.status(400).json({ error: "Нет файла" });
+      }
+      const b64 = file.buffer.toString("base64");
+      const dataUri = `data:${file.mimetype || "application/octet-stream"};base64,${b64}`;
+      const result = await cloudinary.uploader.upload(dataUri, {
+        folder: "telegram-miniapp",
+      });
+      res.json({ url: result.secure_url });
+    } catch (e) {
+      console.error("UPLOAD ERROR:", e);
+      res.status(500).json({ error: "upload failed" });
+    }
+  }
+);
 
 // ================== PAYMENT (Prisma singleton id=1) ==================
 app.post("/payment/list", async (req: Request, res: Response) => {
@@ -293,9 +334,32 @@ app.delete("/promo/:code", async (req: Request, res: Response) => {
 app.post("/products", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
-    const { name, price, image, description, variants } = req.body;
+    console.log("PRODUCT CREATE DATA:", req.body);
+    const { name, price, image, images, description, variants } = req.body as {
+      name?: unknown;
+      price?: unknown;
+      image?: unknown;
+      images?: unknown;
+      description?: unknown;
+      variants?: unknown;
+    };
 
-    if (!name || !price || !image || !variants || variants.length === 0) {
+    const rawImages = Array.isArray(images)
+      ? (images as unknown[]).filter((u) => u != null && String(u).trim() !== "").map((u) => String(u).trim())
+      : [];
+    const imageStr =
+      typeof image === "string" && image.trim() !== "" ? image.trim() : "";
+    const imageList =
+      rawImages.length > 0 ? rawImages : imageStr ? [imageStr] : [];
+    const primaryImage = imageList[0] ?? "";
+
+    if (
+      !name ||
+      price == null ||
+      !primaryImage ||
+      !Array.isArray(variants) ||
+      variants.length === 0
+    ) {
       return res.status(400).json({ error: "Неверные данные" });
     }
 
@@ -308,10 +372,11 @@ app.post("/products", async (req: Request, res: Response) => {
 
     const product = await prisma.product.create({
       data: {
-        name,
+        name: String(name),
         price: Number(price),
-        image,
-        description: description || "",
+        image: primaryImage,
+        images: imageList,
+        description: description != null ? String(description) : "",
         variants: {
           create: cleanVariants.map((v: any) => ({
             color: v.color,
@@ -384,6 +449,7 @@ app.post("/create-order", async (req: Request, res: Response) => {
       promo?: string;
       promoCode?: string;
       customerTelegramId?: number;
+      prismaOrderId?: number;
     };
 
     const name = String(body.name ?? "").trim();
@@ -415,6 +481,12 @@ app.post("/create-order", async (req: Request, res: Response) => {
     const customerTelegramId =
       tgRaw != null && Number.isFinite(Number(tgRaw)) ? Number(tgRaw) : null;
 
+    const prismaOrderIdRaw = body.prismaOrderId;
+    const prismaOrderId =
+      prismaOrderIdRaw != null && Number.isFinite(Number(prismaOrderIdRaw))
+        ? Math.trunc(Number(prismaOrderIdRaw))
+        : undefined;
+
     const order = createMemoryOrder({
       name,
       phone,
@@ -424,6 +496,7 @@ app.post("/create-order", async (req: Request, res: Response) => {
       ...(customerTelegramId != null
         ? { customerTelegramId }
         : {}),
+      ...(prismaOrderId != null ? { id: prismaOrderId } : {}),
     });
 
     if (promoRaw) {
@@ -478,47 +551,85 @@ app.get("/order/:id", (req: Request, res: Response) => {
   res.json(order);
 });
 
-app.post("/order/status", (req: Request, res: Response) => {
+app.post("/order/status", async (req: Request, res: Response) => {
   try {
-  const { id, status } = req.body as {
-    id?: number;
-    status?: string;
-  };
+    console.log("ORDER STATUS DATA:", req.body);
+    if (!denyIfNotAdmin(req, res)) return;
 
-  const orderId = Number(id);
-  if (!Number.isFinite(orderId) || !status || !isValidOrderStatus(status)) {
-    return res.status(400).json({ error: "Нужны id и допустимый status" });
-  }
+    const { id, status } = req.body as {
+      id?: unknown;
+      status?: unknown;
+    };
 
-  const updated = setMemoryOrderStatus(orderId, status);
-  if (!updated) {
-    return res.status(404).json({ error: "Заказ не найден" });
-  }
-  res.json(updated);
+    const orderId = Number(id);
+    if (!Number.isFinite(orderId) || !status || !isValidOrderStatus(String(status))) {
+      return res.status(400).json({ error: "Нужны id и допустимый status" });
+    }
+
+    const st = String(status) as OrderStatus;
+
+    try {
+      const updated = await prisma.order.update({
+        where: { id: orderId },
+        data: { status: st },
+      });
+      const mem = getMemoryOrder(orderId);
+      if (mem) {
+        setMemoryOrderStatus(orderId, st);
+      }
+      return res.json(updated);
+    } catch (e) {
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2025"
+      ) {
+        const mem = setMemoryOrderStatus(orderId, st);
+        if (!mem) {
+          return res.status(404).json({ error: "Заказ не найден" });
+        }
+        return res.json(mem);
+      }
+      console.error("ORDER STATUS ERROR:", e);
+      return res.status(500).json({ error: "fail" });
+    }
   } catch (e) {
     console.error("ORDER STATUS ERROR:", e);
     res.status(500).json({ error: "Server error" });
   }
 });
 
-app.post("/analytics", (req: Request, res: Response) => {
+app.post("/analytics", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
-  const orders = listMemoryOrders();
-  const totalOrders = orders.length;
-  const totalRevenue = orders
-    .filter((o) => o.status === "CONFIRMED" || o.status === "SHIPPED")
-    .reduce((sum, o) => sum + Number(o.total), 0);
-  const accepted = orders.filter((o) => o.status === "ACCEPTED").length;
-  const done = orders.filter((o) => o.status === "SHIPPED").length;
-  const byStatus: Record<string, number> = {};
-  for (const o of orders) {
-    byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
-  }
-  res.json({ totalOrders, totalRevenue, accepted, done, byStatus });
+    console.log("ANALYTICS DATA:", req.body);
+    const orders = await prisma.order.findMany();
+
+    const totalOrders = orders.length;
+    const totalRevenue = orders
+      .filter((o) => o.status === "CONFIRMED")
+      .reduce((sum, o) => sum + o.total, 0);
+    const accepted = orders.filter((o) => o.status === "ACCEPTED").length;
+    const pending = orders.filter((o) => o.status === "PAID_PENDING").length;
+    const shipped = orders.filter((o) => o.status === "SHIPPED").length;
+    const done = shipped;
+
+    const byStatus: Record<string, number> = {};
+    for (const o of orders) {
+      byStatus[o.status] = (byStatus[o.status] ?? 0) + 1;
+    }
+
+    res.json({
+      totalOrders,
+      totalRevenue,
+      accepted,
+      pending,
+      shipped,
+      done,
+      byStatus,
+    });
   } catch (e) {
     console.error("ANALYTICS ERROR:", e);
-    res.status(500).json({ error: "Server error" });
+    res.status(500).json({ error: "analytics failed" });
   }
 });
 
@@ -612,7 +723,7 @@ app.post("/orders", async (req: Request, res: Response) => {
   try {
   const body = req.body;
 
-  console.log("ORDER BODY:", body);
+  console.log("DATA:", body);
 
   if (!body.user || !body.items || body.total == null) {
     return res.status(400).json({ error: "Неверные данные заказа" });
@@ -760,14 +871,27 @@ app.post("/orders", async (req: Request, res: Response) => {
 app.put("/products/:id", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
-    const { name, price, image, description } = req.body;
+    console.log("PRODUCT UPDATE DATA:", req.body);
+    const { name, price, image, images, description } = req.body as {
+      name?: unknown;
+      price?: unknown;
+      image?: unknown;
+      images?: unknown;
+      description?: unknown;
+    };
 
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Неверный id" });
     }
 
-    if (name === undefined && price === undefined && image === undefined && description === undefined) {
+    if (
+      name === undefined &&
+      price === undefined &&
+      image === undefined &&
+      images === undefined &&
+      description === undefined
+    ) {
       return res.status(400).json({ error: "Нет полей для обновления" });
     }
 
@@ -775,11 +899,29 @@ app.put("/products/:id", async (req: Request, res: Response) => {
       name?: string;
       price?: number;
       image?: string;
+      images?: string[];
       description?: string | null;
     } = {};
     if (name !== undefined) data.name = String(name);
     if (price !== undefined) data.price = Number(price);
-    if (image !== undefined) data.image = String(image);
+    if (images !== undefined) {
+      const list = Array.isArray(images)
+        ? images
+            .filter((u) => u != null && String(u).trim() !== "")
+            .map((u) => String(u).trim())
+        : [];
+      data.images = list;
+      const firstImg = list[0];
+      if (firstImg !== undefined) {
+        data.image = firstImg;
+      }
+    }
+    if (image !== undefined) {
+      data.image = String(image);
+      if (images === undefined) {
+        data.images = [String(image)];
+      }
+    }
     if (description !== undefined) data.description = description === null ? null : String(description);
 
     const product = await prisma.product.update({

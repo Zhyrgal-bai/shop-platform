@@ -51,8 +51,23 @@ export function createMemoryOrder(input: {
   items: MemoryOrderItem[];
   total: number;
   customerTelegramId?: number;
+  /** Совпадает с id заказа в Prisma после `POST /orders` (Telegram-цепочка). */
+  id?: number;
 }): MemoryOrder {
-  const orderId = currentId++;
+  let orderId: number;
+  if (input.id != null && Number.isFinite(Number(input.id))) {
+    orderId = Math.trunc(Number(input.id));
+    const existing = orders.find((o) => o.id === orderId);
+    if (existing) {
+      console.log("MEMORY ORDER: duplicate id", orderId, "returning existing");
+      return existing;
+    }
+    if (orderId >= currentId) {
+      currentId = orderId + 1;
+    }
+  } else {
+    orderId = currentId++;
+  }
   const base = {
     id: orderId,
     name: input.name,

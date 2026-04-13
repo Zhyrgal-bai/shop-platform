@@ -85,6 +85,8 @@ export type AdminAnalytics = {
   totalRevenue: number;
   accepted: number;
   done: number;
+  pending?: number;
+  shipped?: number;
   byStatus?: Record<string, number>;
 };
 
@@ -97,7 +99,18 @@ export const adminService = {
   async createProduct(data: Product): Promise<Product> {
     const userId = requireAdminUserId();
     try {
-      const res = await api.post<Product>("/products", { ...data, userId });
+      const images =
+        data.images && data.images.length > 0
+          ? data.images
+          : data.image
+            ? [data.image]
+            : [];
+      const res = await api.post<Product>("/products", {
+        ...data,
+        userId,
+        images,
+        image: images[0] ?? data.image,
+      });
       console.log("CREATED:", res.data);
       return res.data;
     } catch (e: unknown) {
@@ -115,7 +128,9 @@ export const adminService = {
 
   async updateProduct(
     id: number,
-    patch: Partial<Pick<Product, "name" | "price" | "image" | "description">>
+    patch: Partial<
+      Pick<Product, "name" | "price" | "image" | "images" | "description">
+    >
   ): Promise<Product> {
     const userId = requireAdminUserId();
     const res = await api.put<Product>(`/products/${id}`, {
@@ -176,26 +191,44 @@ export const adminService = {
     return data ?? [];
   },
 
-  /** Prisma + in-memory, новые сверху (по id). */
+  /** Prisma + in-memory без дубликатов по id (приоритет у строки из БД). */
   async listAllOrders(): Promise<AdminOrderListItem[]> {
     const [prismaRows, memoryRows] = await Promise.all([
       adminPost<AdminOrderListItem[]>("/orders/list", {}),
       adminPost<AdminOrderListItem[]>("/memory-orders/list", {}),
     ]);
-    return [...(memoryRows ?? []), ...(prismaRows ?? [])].sort(
-      (a, b) => b.id - a.id
-    );
+    const byId = new Map<number, AdminOrderListItem>();
+    for (const r of memoryRows ?? []) {
+      byId.set(r.id, r);
+    }
+    for (const r of prismaRows ?? []) {
+      byId.set(r.id, r);
+    }
+    return [...byId.values()].sort((a, b) => b.id - a.id);
   },
 
-  /** Только заказы из `/create-order` — смена статуса для Telegram-цепочки. */
-  async updateMemoryOrderStatus(
+  async uploadImage(file: File): Promise<string> {
+    const userId = requireAdminUserId();
+    const form = new FormData();
+    form.append("userId", String(userId));
+    form.append("file", file);
+    const url = `${viteApiBase()}/upload`;
+    const res = await fetch(url, { method: "POST", body: form });
+    if (!res.ok) throw new Error(await readFetchError(res));
+    const j = (await res.json()) as { url?: string };
+    if (!j.url) throw new Error("Нет url в ответе");
+    return j.url;
+  },
+
+  async updateOrderStatus(
     id: number,
     status: "ACCEPTED" | "CONFIRMED" | "SHIPPED"
   ): Promise<void> {
+    const userId = requireAdminUserId();
     const res = await fetch(`${API_BASE_URL}/order/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, status }),
+      body: JSON.stringify({ id, status, userId }),
     });
     if (!res.ok) throw new Error(await readFetchError(res));
   },
@@ -217,6 +250,11 @@ export const adminService = {
       !Array.isArray(d.byStatus)
         ? d.byStatus
         : {};
-    return { ...d, byStatus };
+    return {
+      ...d,
+      pending: typeof d.pending === "number" ? d.pending : 0,
+      shipped: typeof d.shipped === "number" ? d.shipped : d.done,
+      byStatus,
+    };
   },
 };

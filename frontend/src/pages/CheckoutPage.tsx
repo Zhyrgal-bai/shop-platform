@@ -141,7 +141,7 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
 
     setSubmitting(true);
     try {
-      await api.post("/orders", {
+      const orderRes = await api.post<{ id: number }>("/orders", {
         ...(Number.isFinite(userId) ? { userId } : {}),
         user: {
           telegramId: Number.isFinite(Number(tg?.id)) ? Number(tg?.id) : 0,
@@ -163,6 +163,8 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
         promo: promoCode,
         comment: comment.trim(),
       });
+
+      const prismaOrderId = orderRes.data?.id;
 
       const createUrl = `${viteApiBase()}/create-order`;
       const res = await fetch(createUrl, {
@@ -187,6 +189,9 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
           total: payTotal,
           promoCode,
           customerTelegramId: Number(tg?.id),
+          ...(prismaOrderId != null && Number.isFinite(prismaOrderId)
+            ? { prismaOrderId }
+            : {}),
         }),
       });
 

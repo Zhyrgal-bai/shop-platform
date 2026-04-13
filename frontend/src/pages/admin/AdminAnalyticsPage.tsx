@@ -15,6 +15,7 @@ export default function AdminAnalyticsPage() {
     totalOrders: number;
     totalRevenue: number;
     accepted: number;
+    pending: number;
     done: number;
     byStatus: Record<string, number>;
   } | null>(null);
@@ -27,6 +28,7 @@ export default function AdminAnalyticsPage() {
         totalOrders: a.totalOrders,
         totalRevenue: a.totalRevenue,
         accepted: a.accepted,
+        pending: a.pending ?? 0,
         done: a.done,
         byStatus: a.byStatus ?? {},
       });
@@ -47,8 +49,8 @@ export default function AdminAnalyticsPage() {
       <header className="admin-dash-page__head">
         <h1 className="admin-dash-page__title">Аналитика</h1>
         <p className="admin-dash-page__subtitle">
-          По заказам из мини-аппа (in-memory). Обновите страницу для актуальных
-          цифр.
+          По заказам в базе данных (Prisma). Выручка — сумма заказов в статусе
+          CONFIRMED.
         </p>
       </header>
 
@@ -70,12 +72,16 @@ export default function AdminAnalyticsPage() {
               <span className="admin-kpi-card__value">{data.totalOrders}</span>
             </div>
             <div className="admin-kpi-card">
-              <span className="admin-kpi-card__label">Выручка (оплач.+отпр.)</span>
+              <span className="admin-kpi-card__label">Выручка (CONFIRMED)</span>
               <span className="admin-kpi-card__value">{data.totalRevenue} сом</span>
             </div>
             <div className="admin-kpi-card">
-              <span className="admin-kpi-card__label">Принято (ожидают оплату)</span>
+              <span className="admin-kpi-card__label">Принято (ACCEPTED)</span>
               <span className="admin-kpi-card__value">{data.accepted}</span>
+            </div>
+            <div className="admin-kpi-card">
+              <span className="admin-kpi-card__label">Ожидают подтверждения оплаты</span>
+              <span className="admin-kpi-card__value">{data.pending}</span>
             </div>
             <div className="admin-kpi-card">
               <span className="admin-kpi-card__label">Отправлено</span>

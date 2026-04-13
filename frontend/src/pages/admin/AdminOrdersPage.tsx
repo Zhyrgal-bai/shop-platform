@@ -63,14 +63,14 @@ export default function AdminOrdersPage() {
   ) {
     setBusyId(id);
     try {
-      await adminService.updateMemoryOrderStatus(id, status);
+      await adminService.updateOrderStatus(id, status);
       await load();
     } catch (e) {
       console.error(e);
       alert(
         e instanceof Error
           ? e.message
-          : "Не удалось обновить статус (доступно только для заказов из мини-аппа в нужном состоянии)"
+          : "Не удалось обновить статус"
       );
     } finally {
       setBusyId(null);
@@ -82,8 +82,8 @@ export default function AdminOrdersPage() {
       <header className="admin-dash-page__head">
         <h1 className="admin-dash-page__title">Заказы</h1>
         <p className="admin-dash-page__subtitle">
-          Принять / подтвердить оплату / отправлено — для заказов из мини-аппа
-          (Telegram). Заказы из каталога (БД) только просмотр.
+          Статусы сохраняются в базе; дубли по одному id скрыты. Кнопки Telegram
+          работают для того же номера заказа.
         </p>
       </header>
 
@@ -118,7 +118,6 @@ export default function AdminOrdersPage() {
         <div className="admin-order-grid">
           {filtered.map((order) => {
             const canon = canonicalStatus(order.status);
-            const isMemory = order.source === "memory";
             const busy = busyId === order.id;
             return (
               <article key={`${order.source ?? "?"}-${order.id}`} className="admin-order-card">
@@ -153,41 +152,39 @@ export default function AdminOrdersPage() {
                     </dd>
                   </div>
                 </dl>
-                {isMemory && (
-                  <div className="admin-order-card__actions">
-                    <button
-                      type="button"
-                      className="admin-order-card__btn admin-order-card__btn--accept"
-                      disabled={busy || canon !== "NEW"}
-                      title={canon !== "NEW" ? "Только для статуса NEW" : undefined}
-                      onClick={() => void applyStatus(order.id, "ACCEPTED")}
-                    >
-                      Принять
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-order-card__btn admin-order-card__btn--confirm"
-                      disabled={busy || canon !== "PAID_PENDING"}
-                      title={
-                        canon !== "PAID_PENDING"
-                          ? "После «Я оплатил» у клиента"
-                          : undefined
-                      }
-                      onClick={() => void applyStatus(order.id, "CONFIRMED")}
-                    >
-                      Подтвердить оплату
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-order-card__btn admin-order-card__btn--ship"
-                      disabled={busy || canon !== "CONFIRMED"}
-                      title={canon !== "CONFIRMED" ? "После подтверждения оплаты" : undefined}
-                      onClick={() => void applyStatus(order.id, "SHIPPED")}
-                    >
-                      Отправлено
-                    </button>
-                  </div>
-                )}
+                <div className="admin-order-card__actions">
+                  <button
+                    type="button"
+                    className="admin-order-card__btn admin-order-card__btn--accept"
+                    disabled={busy || canon !== "NEW"}
+                    title={canon !== "NEW" ? "Только для статуса NEW" : undefined}
+                    onClick={() => void applyStatus(order.id, "ACCEPTED")}
+                  >
+                    Принять
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-order-card__btn admin-order-card__btn--confirm"
+                    disabled={busy || canon !== "PAID_PENDING"}
+                    title={
+                      canon !== "PAID_PENDING"
+                        ? "После «Я оплатил» у клиента"
+                        : undefined
+                    }
+                    onClick={() => void applyStatus(order.id, "CONFIRMED")}
+                  >
+                    Подтвердить оплату
+                  </button>
+                  <button
+                    type="button"
+                    className="admin-order-card__btn admin-order-card__btn--ship"
+                    disabled={busy || canon !== "CONFIRMED"}
+                    title={canon !== "CONFIRMED" ? "После подтверждения оплаты" : undefined}
+                    onClick={() => void applyStatus(order.id, "SHIPPED")}
+                  >
+                    Отправлено
+                  </button>
+                </div>
               </article>
             );
           })}

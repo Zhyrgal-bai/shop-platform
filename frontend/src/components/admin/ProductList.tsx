@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import axios from "axios";
 import { useAdminStore } from "../../store/admin.store";
-import { getTotalStockSum } from "../../utils/product";
+import { getPrimaryImage, getTotalStockSum } from "../../utils/product";
 
 const ProductList = () => {
   const { products, fetchProducts, deleteProduct } = useAdminStore();
@@ -21,7 +21,7 @@ const ProductList = () => {
         return (
           <div key={p.id} className="admin-product-card">
             <img
-              src={p.image}
+              src={getPrimaryImage(p)}
               alt={p.name}
               className="admin-product-image"
             />

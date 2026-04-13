@@ -4,6 +4,7 @@ import {
   getMemoryOrder,
   setMemoryOrderStatus,
 } from "../server/memoryOrders.js";
+import { tryUpdatePrismaOrderStatus } from "../server/orderPrismaSync.js";
 import { prisma } from "../server/db.js";
 import { listPaymentDetailsFromDb } from "../server/paymentRepo.js";
 
@@ -166,6 +167,7 @@ if (bot) {
         }
 
         setMemoryOrderStatus(orderId, "ACCEPTED");
+        void tryUpdatePrismaOrderStatus(orderId, "ACCEPTED");
 
         await ctx.editMessageText(`🟢 Заказ #${orderId} принят. Ожидаем оплату.`, {
           reply_markup: { inline_keyboard: [] },
@@ -197,6 +199,7 @@ if (bot) {
         }
 
         setMemoryOrderStatus(orderId, "SHIPPED");
+        void tryUpdatePrismaOrderStatus(orderId, "SHIPPED");
 
         await ctx.editMessageText(`🚚 Заказ #${orderId} отправлен`, {
           reply_markup: { inline_keyboard: [] },
@@ -227,6 +230,7 @@ if (bot) {
         }
 
         setMemoryOrderStatus(orderId, "PAID_PENDING");
+        void tryUpdatePrismaOrderStatus(orderId, "PAID_PENDING");
 
         await ctx.editMessageText(
           `💳 Оплата заказа #${orderId}\n\nЗаявка отправлена администратору. Ожидайте подтверждения.`,
@@ -277,6 +281,7 @@ if (bot) {
         }
 
         setMemoryOrderStatus(orderId, "CONFIRMED");
+        void tryUpdatePrismaOrderStatus(orderId, "CONFIRMED");
 
         await ctx.editMessageText(`🟢 Оплата подтверждена · заказ #${orderId}`, {
           reply_markup: shipOnlyKeyboard(orderId),
@@ -295,6 +300,7 @@ if (bot) {
       if (action === "reject") {
         if (order.status === "NEW") {
           setMemoryOrderStatus(orderId, "CANCELLED");
+          void tryUpdatePrismaOrderStatus(orderId, "CANCELLED");
 
           await ctx.editMessageText(`❌ Заказ #${orderId} отклонён`, {
             reply_markup: { inline_keyboard: [] },
@@ -318,6 +324,7 @@ if (bot) {
         }
 
         setMemoryOrderStatus(orderId, "ACCEPTED");
+        void tryUpdatePrismaOrderStatus(orderId, "ACCEPTED");
 
         await ctx.editMessageText(`❌ Оплата не подтверждена\nЗаказ #${orderId}`, {
           reply_markup: { inline_keyboard: [] },
