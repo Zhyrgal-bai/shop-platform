@@ -30,7 +30,7 @@ export default function Header({ menuOpen = false, onMenuToggle }: HeaderProps) 
         </motion.button>
       </div>
 
-      <h1 className="bars-header__logo">BARS</h1>
+      <h1 className="bars-header__logo">BARŚ</h1>
 
       <div className="bars-header__cell bars-header__cell--right">
         <div

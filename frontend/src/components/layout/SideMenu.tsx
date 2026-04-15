@@ -120,7 +120,7 @@ export default function SideMenu({
                     onClose();
                   }}
                 >
-                  <div className="bars-drawer__brand-title">BARS</div>
+                  <div className="bars-drawer__brand-title">BARŚ</div>
                   <div className="bars-drawer__brand-tag">одежда</div>
                 </button>
               </div>
