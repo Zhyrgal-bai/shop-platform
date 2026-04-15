@@ -1,6 +1,6 @@
-import { api } from "./api";
+import { api, API_BASE_URL } from "./api";
 import type { Product } from "../types";
-import { getWebAppUserId } from "../utils/adminAccess";
+import { getWebAppUserId } from "../utils/telegramUserId";
 
 function requireAdminUserId(): number {
   const userId = getWebAppUserId();
@@ -8,15 +8,6 @@ function requireAdminUserId(): number {
     throw new Error("Откройте приложение в Telegram");
   }
   return userId;
-}
-
-function viteApiBase(): string {
-  const raw =
-    typeof import.meta.env.VITE_API_URL === "string"
-      ? import.meta.env.VITE_API_URL.trim()
-      : "";
-  const base = raw.replace(/\/$/, "");
-  return base !== "" ? base : "https://bars-shop.onrender.com";
 }
 
 async function readFetchError(res: Response): Promise<string> {
@@ -34,7 +25,7 @@ async function adminPost<T>(
   body: Record<string, unknown> = {}
 ): Promise<T> {
   const userId = requireAdminUserId();
-  const url = `${viteApiBase()}${path.startsWith("/") ? path : `/${path}`}`;
+  const url = `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -46,7 +37,7 @@ async function adminPost<T>(
 
 async function adminGet<T>(path: string): Promise<T> {
   const userId = requireAdminUserId();
-  const base = viteApiBase().replace(/\/$/, "");
+  const base = API_BASE_URL.replace(/\/$/, "");
   const p = path.startsWith("/") ? path : `/${path}`;
   const url = new URL(`${base}${p}`);
   url.searchParams.set("userId", String(userId));
@@ -57,7 +48,9 @@ async function adminGet<T>(path: string): Promise<T> {
 
 async function adminDelete(path: string): Promise<void> {
   const userId = requireAdminUserId();
-  const url = `${viteApiBase()}${path.startsWith("/") ? path : `/${path}`}`;
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const sep = p.includes("?") ? "&" : "?";
+  const url = `${API_BASE_URL}${p}${sep}userId=${encodeURIComponent(String(userId))}`;
   const res = await fetch(url, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
@@ -142,7 +135,10 @@ export const adminService = {
 
   async deleteProduct(id: number): Promise<void> {
     const userId = requireAdminUserId();
-    await api.delete(`/products/${id}`, { data: { userId } });
+    await api.delete(`/products/${id}`, {
+      data: { userId },
+      params: { userId },
+    });
   },
 
   async updateProduct(
@@ -222,7 +218,7 @@ export const adminService = {
     const form = new FormData();
     form.append("userId", String(userId));
     form.append("file", file);
-    const url = `${viteApiBase()}/upload`;
+    const url = `${API_BASE_URL}/upload`;
     const res = await fetch(url, { method: "POST", body: form });
     if (!res.ok) throw new Error(await readFetchError(res));
     const j = (await res.json()) as { url?: string };
@@ -238,7 +234,7 @@ export const adminService = {
     for (const f of files) {
       form.append("files", f);
     }
-    const url = `${viteApiBase()}/products/upload-images`;
+    const url = `${API_BASE_URL}/products/upload-images`;
     const res = await fetch(url, { method: "POST", body: form });
     if (!res.ok) throw new Error(await readFetchError(res));
     const j = (await res.json()) as { urls?: string[] };
@@ -250,7 +246,7 @@ export const adminService = {
     status: "ACCEPTED" | "CONFIRMED" | "SHIPPED"
   ): Promise<void> {
     const userId = requireAdminUserId();
-    const url = `${viteApiBase()}/orders/${id}`;
+    const url = `${API_BASE_URL}/orders/${id}`;
     const res = await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -262,7 +258,7 @@ export const adminService = {
   /** Статус доставки / комментарий (только tracking, без смены status). */
   async updateOrderTracking(id: number, tracking: string): Promise<void> {
     const userId = requireAdminUserId();
-    const url = `${viteApiBase()}/orders/${id}`;
+    const url = `${API_BASE_URL}/orders/${id}`;
     const res = await fetch(url, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

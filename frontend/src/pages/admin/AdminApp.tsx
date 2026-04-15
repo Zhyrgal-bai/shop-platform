@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import AdminLayout from "./AdminLayout";
 import AdminOrdersPage from "./AdminOrdersPage";
@@ -11,6 +12,13 @@ type AdminAppProps = {
 };
 
 export default function AdminApp({ onExit }: AdminAppProps) {
+  useEffect(() => {
+    const h = window.location.hash.replace(/^#/, "");
+    if (!h || h === "/" || !h.includes("admin")) {
+      window.location.hash = "#/admin/orders";
+    }
+  }, []);
+
   return (
     <HashRouter>
       <Routes>

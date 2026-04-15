@@ -1,4 +1,4 @@
-import { getWebAppUserId } from "./adminAccess";
+import { getWebAppUserId } from "./telegramUserId";
 
 export type TelegramMiniAppUser = TelegramWebAppUser;
 

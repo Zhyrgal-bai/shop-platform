@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchMyOrders } from "../services/myOrdersApi";
-import { getWebAppUserId } from "../utils/adminAccess";
+import { getWebAppUserId } from "../utils/telegramUserId";
 import { mbankOrderQrImageUrl } from "../utils/mbankQrUrl";
 import type { MyOrderRow } from "../types/myOrder";
 import "./MyOrders.css";

@@ -4,7 +4,7 @@ import { fetchMyOrders } from "../services/myOrdersApi";
 import type { Product } from "../types";
 import ProductGrid from "../components/product/ProductGrid";
 import Toast from "../components/ui/Toast";
-import { getWebAppUserId } from "../utils/adminAccess";
+import { getWebAppUserId } from "../utils/telegramUserId";
 import "../components/ui/HomePage.css";
 
 const FIRST_ORDER_PROMO = "BARS10";

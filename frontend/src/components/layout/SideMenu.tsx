@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { isAdminPanelVisible } from "@/utils/admin";
+import { useAdminPanelVisible } from "@/utils/admin";
 import { getTelegramUser } from "../../utils/telegram";
 import {
   telegramDisplayInitial,
@@ -65,7 +65,7 @@ export default function SideMenu({
 }: SideMenuProps) {
   const hash = useSyncExternalStore(subscribeHash, readHash, () => "");
   const user = useMemo(() => getTelegramUser(), []);
-  const admin = isAdminPanelVisible();
+  const admin = useAdminPanelVisible();
   const adminActive = activeAdminSection(hash);
 
   useEffect(() => {

@@ -34,7 +34,7 @@ export default function AdminLayout({ onExit }: AdminLayoutProps) {
               className={({ isActive }) =>
                 `admin-dash__nav-link${isActive ? " admin-dash__nav-link--active" : ""}`
               }
-              end
+              end={to === "/admin/products"}
             >
               <span className="admin-dash__nav-icon" aria-hidden>
                 {icon}

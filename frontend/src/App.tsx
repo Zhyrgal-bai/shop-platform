@@ -7,7 +7,7 @@ import MyOrders from "./pages/MyOrders";
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCartStore } from "./store/useCartStore";
-import { isAdminPanelVisible } from "@/utils/admin";
+import { useAdminPanelVisible, useAdminAccessBootstrap } from "@/utils/admin";
 import "./App.css";
 import "./components/ui/Admin.css";
 import Header from "./components/layout/Header";
@@ -26,6 +26,8 @@ export default function App() {
   const location = useLocation();
   const [page, setPage] = useState<AppNavPage>(initialPageFromPath);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const adminAllowed = useAdminPanelVisible();
+  useAdminAccessBootstrap();
 
   const items = useCartStore((state) => state.items);
   const totalQuantity = items.reduce((sum, item) => sum + (item.quantity ?? 1), 0);
@@ -123,8 +125,13 @@ export default function App() {
           />
         )}
         {page === "admin" &&
-          (isAdminPanelVisible() ? (
-            <AdminApp onExit={() => commitPage("home")} />
+          (adminAllowed ? (
+            <AdminApp
+              onExit={() => {
+                window.location.hash = "";
+                commitPage("home");
+              }}
+            />
           ) : (
             <div className="admin-page">
               <div className="no-access">Нет прав</div>
