@@ -129,6 +129,7 @@ function clampDiscountPercent(n: unknown): number {
   return Math.min(100, Math.max(0, Math.round(v)));
 }
 
+
 async function ensureBaseCategories(): Promise<void> {
   for (const main of BASE_CATEGORY_TREE) {
     const parentExisting = await prisma.category.findFirst({
