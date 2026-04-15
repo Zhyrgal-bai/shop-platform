@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import PaymentDetailsPanel from "../../components/admin/PaymentDetailsPanel";
 import PromoCodesPanel from "../../components/admin/PromoCodesPanel";
 
@@ -18,9 +17,9 @@ export default function AdminSettingsPage() {
           <p className="admin-form-hint admin-pm-settings-hint">
             Редактирование цен, фото, вариантов и скидок.
           </p>
-          <Link to="/admin/products/manage" className="admin-pm-cta">
+          <a href="#/admin/products/manage" className="admin-pm-cta">
             Управление товарами
-          </Link>
+          </a>
         </div>
       </section>
 

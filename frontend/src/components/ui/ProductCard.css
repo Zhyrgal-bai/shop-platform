@@ -41,12 +41,26 @@
   pointer-events: none;
 }
 
+/* Просмотр деталей в модалке — даже если «нет в наличии» */
+.product-card.out .product-image-wrapper.product-image-wrapper--detail {
+  pointer-events: auto;
+  cursor: pointer;
+}
+
 .product-image-wrapper {
   position: relative;
   width: 100%;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   touch-action: manipulation;
+}
+
+.product-image-wrapper--detail {
+  cursor: pointer;
+}
+
+.product-title--detail {
+  cursor: pointer;
 }
 
 .image-slider {

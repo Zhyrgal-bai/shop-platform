@@ -13,9 +13,11 @@ import "../ui/ProductCard.css";
 type Props = {
   product: Product;
   showToast: (msg: string) => void;
+  /** Открыть карточку товара (модалка на витрине). */
+  onOpenDetail?: (product: Product) => void;
 };
 
-export default function ProductCard({ product, showToast }: Props) {
+export default function ProductCard({ product, showToast, onOpenDetail }: Props) {
   const hasCustomColors = Boolean(product.colors && product.colors.length > 0);
 
   const colors: ProductColor[] = useMemo(
@@ -155,12 +157,27 @@ export default function ProductCard({ product, showToast }: Props) {
     touchStartX.current = null;
   };
 
+  const openDetail = () => {
+    if (onOpenDetail) onOpenDetail(product);
+  };
+
   return (
     <div className={`product-card${outOfStock ? " out" : ""}`}>
       <div
-        className="product-image-wrapper"
+        className={`product-image-wrapper${onOpenDetail ? " product-image-wrapper--detail" : ""}`}
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
+        onClick={() => onOpenDetail && openDetail()}
+        onKeyDown={(e) => {
+          if (!onOpenDetail) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            openDetail();
+          }
+        }}
+        role={onOpenDetail ? "button" : undefined}
+        tabIndex={onOpenDetail ? 0 : undefined}
+        aria-label={onOpenDetail ? "Подробнее о товаре" : undefined}
       >
         {/* Instagram: шаг = currentIndex × (100% / n) ширины трека; строка «−index×100%» без деления сдвинула бы на n слайдов за раз */}
         <div
@@ -185,14 +202,34 @@ export default function ProductCard({ product, showToast }: Props) {
             <span
               key={i}
               className={i === currentIndex ? "active" : ""}
-              onClick={() => setCurrentIndex(i)}
+              onClick={(e) => {
+                e.stopPropagation();
+                setCurrentIndex(i);
+              }}
             />
           ))}
         </div>
       </div>
 
       <div className="product-info">
-        <h3 className="product-title">{product.name}</h3>
+        <h3
+          className={`product-title${onOpenDetail ? " product-title--detail" : ""}`}
+          onClick={onOpenDetail ? openDetail : undefined}
+          onKeyDown={
+            onOpenDetail
+              ? (e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openDetail();
+                  }
+                }
+              : undefined
+          }
+          role={onOpenDetail ? "button" : undefined}
+          tabIndex={onOpenDetail ? 0 : undefined}
+        >
+          {product.name}
+        </h3>
 
         {outOfStock ? (
           <div className="out-of-stock">НЕТ В НАЛИЧИИ</div>

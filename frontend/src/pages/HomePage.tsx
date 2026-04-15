@@ -3,6 +3,7 @@ import { api } from "../services/api";
 import { fetchMyOrders } from "../services/myOrdersApi";
 import type { Product } from "../types";
 import ProductGrid from "../components/product/ProductGrid";
+import ProductDetailModal from "../components/product/ProductDetailModal";
 import Toast from "../components/ui/Toast";
 import { getWebAppUserId } from "../utils/telegramUserId";
 import "../components/ui/HomePage.css";
@@ -16,6 +17,7 @@ export default function HomePage() {
   const [activeCategory, setActiveCategory] = useState("ВСЕ");
   const [searchQuery, setSearchQuery] = useState("");
   const [showFirstOrderBanner, setShowFirstOrderBanner] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   const showToast = (message: string) => {
     setToast(message);
@@ -141,7 +143,15 @@ export default function HomePage() {
           </button>
         ))}
       </div>
-      <ProductGrid products={filteredProducts} showToast={showToast} />
+      <ProductGrid
+        products={filteredProducts}
+        showToast={showToast}
+        onProductSelect={setSelectedProduct}
+      />
+      <ProductDetailModal
+        product={selectedProduct}
+        onClose={() => setSelectedProduct(null)}
+      />
       <Toast message={toast} visible={isToastVisible} />
     </div>
   );

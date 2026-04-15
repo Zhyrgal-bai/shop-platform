@@ -1,17 +1,27 @@
-import { useEffect } from "react";
-import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import AdminLayout from "./AdminLayout";
 import AdminOrdersPage from "./AdminOrdersPage";
 import AdminProductsPage from "./AdminProductsPage";
 import AdminAnalyticsPage from "./AdminAnalyticsPage";
 import AdminSettingsPage from "./AdminSettingsPage";
 import AdminProductManagePage from "./AdminProductManagePage";
+import AdminErrorBoundary from "./AdminErrorBoundary";
+import {
+  adminPathFromHash,
+  subscribeAdminHash,
+} from "./adminHashRoute";
 
 type AdminAppProps = {
   onExit: () => void;
 };
 
 export default function AdminApp({ onExit }: AdminAppProps) {
+  const path = useSyncExternalStore(
+    subscribeAdminHash,
+    adminPathFromHash,
+    () => "/admin/orders"
+  );
+
   useEffect(() => {
     const h = window.location.hash.replace(/^#/, "");
     if (!h || h === "/" || !h.includes("admin")) {
@@ -19,20 +29,25 @@ export default function AdminApp({ onExit }: AdminAppProps) {
     }
   }, []);
 
+  const page = useMemo(() => {
+    if (path.includes("/admin/products/manage")) {
+      return <AdminProductManagePage key="manage" />;
+    }
+    if (path.includes("/admin/products")) {
+      return <AdminProductsPage key="products" />;
+    }
+    if (path.includes("/admin/analytics")) {
+      return <AdminAnalyticsPage key="analytics" />;
+    }
+    if (path.includes("/admin/settings")) {
+      return <AdminSettingsPage key="settings" />;
+    }
+    return <AdminOrdersPage key="orders" />;
+  }, [path]);
+
   return (
-    <HashRouter>
-      <Routes>
-        <Route path="/" element={<Navigate to="/admin/orders" replace />} />
-        <Route path="/admin" element={<AdminLayout onExit={onExit} />}>
-          <Route index element={<Navigate to="orders" replace />} />
-          <Route path="orders" element={<AdminOrdersPage />} />
-          <Route path="products" element={<AdminProductsPage />} />
-          <Route path="products/manage" element={<AdminProductManagePage />} />
-          <Route path="analytics" element={<AdminAnalyticsPage />} />
-          <Route path="settings" element={<AdminSettingsPage />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/admin/orders" replace />} />
-      </Routes>
-    </HashRouter>
+    <AdminLayout onExit={onExit} path={path}>
+      <AdminErrorBoundary>{page}</AdminErrorBoundary>
+    </AdminLayout>
   );
 }

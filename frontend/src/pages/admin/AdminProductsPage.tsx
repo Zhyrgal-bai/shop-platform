@@ -1,4 +1,3 @@
-import { Link } from "react-router-dom";
 import ProductForm from "../../components/admin/ProductForm";
 import ProductList from "../../components/admin/ProductList";
 
@@ -14,9 +13,9 @@ export default function AdminProductsPage() {
               каталоге.
             </p>
           </div>
-          <Link to="/admin/products/manage" className="admin-pm-cta">
+          <a href="#/admin/products/manage" className="admin-pm-cta">
             Управление товарами
-          </Link>
+          </a>
         </div>
       </header>
 

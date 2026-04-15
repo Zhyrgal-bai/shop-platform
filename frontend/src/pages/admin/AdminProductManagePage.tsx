@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { adminService } from "../../services/admin.service";
 import type { Product } from "../../types";
 import { getPrimaryImage, getTotalStockSum } from "../../utils/product";
@@ -83,9 +82,9 @@ export default function AdminProductManagePage() {
               Каталог, редактирование, фото (Cloudinary), варианты и скидки.
             </p>
           </div>
-          <Link to="/admin/products" className="admin-pm-back-link">
+          <a href="#/admin/products" className="admin-pm-back-link">
             ← Добавить товар
-          </Link>
+          </a>
         </div>
       </header>
 
