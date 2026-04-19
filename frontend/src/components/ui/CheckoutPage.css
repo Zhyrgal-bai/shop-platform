@@ -105,6 +105,60 @@
   gap: 8px;
 }
 
+.checkout-address-suggest {
+  position: relative;
+  width: 100%;
+}
+
+.checkout-address-suggest__loading {
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: rgba(147, 197, 253, 0.95);
+}
+
+.checkout-address-suggest__list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 50;
+  max-height: 220px;
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #1a2235;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+}
+
+.checkout-address-suggest__item {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: #e5e7eb;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: left;
+  line-height: 1.35;
+  cursor: pointer;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.checkout-address-suggest__item:last-child {
+  border-bottom: none;
+}
+
+.checkout-address-suggest__item:hover,
+.checkout-address-suggest__item:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
 .checkout-loc-actions {
   display: flex;
   flex-wrap: wrap;

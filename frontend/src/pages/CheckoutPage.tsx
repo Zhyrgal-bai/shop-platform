@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useCartStore } from "../store/useCartStore";
 import { api } from "../services/api";
@@ -32,6 +32,15 @@ function promoApplyUrl(): string {
 
 const PROMO_APPLY_ERROR = "Неверный или использован";
 
+type NominatimSearchItem = {
+  place_id: number;
+  display_name: string;
+  lat: string;
+  lon: string;
+};
+
+const ADDRESS_SEARCH_DEBOUNCE_MS = 450;
+
 function orderErrorMessage(err: unknown): string {
   if (axios.isAxiosError(err)) {
     const data = err.response?.data as { error?: string } | undefined;
@@ -50,6 +59,14 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
   const [lat, setLat] = useState<number | null>(null);
   const [lng, setLng] = useState<number | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [addressSuggestions, setAddressSuggestions] = useState<
+    NominatimSearchItem[]
+  >([]);
+  const [addressSearchLoading, setAddressSearchLoading] = useState(false);
+  const addressSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const addressSearchSeqRef = useRef(0);
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [deliveryType, setDeliveryType] = useState("delivery");
   const [paymentMethod, setPaymentMethod] =
@@ -76,6 +93,14 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
   useEffect(() => {
     setPromoPreview(null);
   }, [totalPrice]);
+
+  useEffect(() => {
+    return () => {
+      if (addressSearchTimerRef.current) {
+        clearTimeout(addressSearchTimerRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const uid = getTelegramWebAppUserId();
@@ -134,20 +159,135 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
     return data.newTotal;
   };
 
+  const runAddressSearch = useCallback(async (q: string) => {
+    const seq = ++addressSearchSeqRef.current;
+    setAddressSearchLoading(true);
+    try {
+      const url = new URL("https://nominatim.openstreetmap.org/search");
+      url.searchParams.set("format", "jsonv2");
+      url.searchParams.set("q", q);
+      url.searchParams.set("accept-language", "ru");
+      url.searchParams.set("limit", "5");
+      url.searchParams.set("countrycodes", "kg");
+
+      const res = await fetch(url.toString(), {
+        headers: { Accept: "application/json" },
+      });
+      const raw = (await res.json().catch(() => [])) as unknown;
+      if (seq !== addressSearchSeqRef.current) return;
+      const rows = Array.isArray(raw) ? raw : [];
+      const next: NominatimSearchItem[] = [];
+      for (const row of rows) {
+        if (next.length >= 5) break;
+        if (
+          row != null &&
+          typeof row === "object" &&
+          typeof (row as { place_id?: unknown }).place_id === "number" &&
+          typeof (row as { display_name?: unknown }).display_name === "string" &&
+          typeof (row as { lat?: unknown }).lat === "string" &&
+          typeof (row as { lon?: unknown }).lon === "string"
+        ) {
+          next.push(row as NominatimSearchItem);
+        }
+      }
+      setAddressSuggestions(next);
+    } catch (e) {
+      console.error(e);
+      if (seq === addressSearchSeqRef.current) {
+        setAddressSuggestions([]);
+      }
+    } finally {
+      if (seq === addressSearchSeqRef.current) {
+        setAddressSearchLoading(false);
+      }
+    }
+  }, []);
+
+  const handleAddressChange = useCallback(
+    (value: string) => {
+      setAddress(value);
+      const t = value.trim();
+      if (t.length < 3) {
+        if (addressSearchTimerRef.current) {
+          clearTimeout(addressSearchTimerRef.current);
+          addressSearchTimerRef.current = null;
+        }
+        addressSearchSeqRef.current += 1;
+        setAddressSuggestions([]);
+        setAddressSearchLoading(false);
+        return;
+      }
+      if (addressSearchTimerRef.current) {
+        clearTimeout(addressSearchTimerRef.current);
+      }
+      addressSearchTimerRef.current = setTimeout(() => {
+        addressSearchTimerRef.current = null;
+        void runAddressSearch(t);
+      }, ADDRESS_SEARCH_DEBOUNCE_MS);
+    },
+    [runAddressSearch]
+  );
+
+  const selectAddress = useCallback((item: NominatimSearchItem) => {
+    if (addressSearchTimerRef.current) {
+      clearTimeout(addressSearchTimerRef.current);
+      addressSearchTimerRef.current = null;
+    }
+    addressSearchSeqRef.current += 1;
+    setAddressSearchLoading(false);
+    setAddress(item.display_name.trim().slice(0, 2000));
+    setLat(Number(item.lat));
+    setLng(Number(item.lon));
+    setAddressSuggestions([]);
+  }, []);
+
   const getLocation = useCallback(() => {
     if (!navigator.geolocation) {
       alert("Геолокация не поддерживается");
       return;
     }
+    if (addressSearchTimerRef.current) {
+      clearTimeout(addressSearchTimerRef.current);
+      addressSearchTimerRef.current = null;
+    }
+    addressSearchSeqRef.current += 1;
+    setAddressSuggestions([]);
+    setAddressSearchLoading(false);
     setLoadingLocation(true);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        setLat(pos.coords.latitude);
-        setLng(pos.coords.longitude);
-        setLoadingLocation(false);
+        const nextLat = pos.coords.latitude;
+        const nextLng = pos.coords.longitude;
+        setLat(nextLat);
+        setLng(nextLng);
+
+        void (async () => {
+          try {
+            const url = new URL("https://nominatim.openstreetmap.org/reverse");
+            url.searchParams.set("format", "jsonv2");
+            url.searchParams.set("lat", String(nextLat));
+            url.searchParams.set("lon", String(nextLng));
+            url.searchParams.set("accept-language", "ru");
+
+            const res = await fetch(url.toString(), {
+              headers: { Accept: "application/json" },
+            });
+            const data = (await res.json().catch(() => ({}))) as {
+              display_name?: string;
+            };
+            if (typeof data.display_name === "string" && data.display_name.trim()) {
+              setAddress(data.display_name.trim().slice(0, 2000));
+            }
+          } catch (e) {
+            console.error(e);
+            alert("Не удалось получить адрес");
+          } finally {
+            setLoadingLocation(false);
+          }
+        })();
       },
       () => {
-        alert("Не удалось получить местоположение");
+        alert("Разрешите доступ к геолокации");
         setLoadingLocation(false);
       },
       { enableHighAccuracy: true, timeout: 20_000, maximumAge: 60_000 }
@@ -340,12 +480,49 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
           />
         )}
         <div className="checkout-address-block">
-          <input
-            placeholder="Адрес доставки"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-            autoComplete="street-address"
-          />
+          <div className="checkout-address-suggest">
+            <input
+              placeholder="Введите адрес"
+              value={address}
+              onChange={(e) => handleAddressChange(e.target.value)}
+              autoComplete="street-address"
+              aria-autocomplete="list"
+              aria-expanded={
+                addressSuggestions.length > 0 || addressSearchLoading
+              }
+            />
+            {addressSearchLoading && (
+              <p
+                className="checkout-address-suggest__loading"
+                role="status"
+                aria-live="polite"
+              >
+                Поиск...
+              </p>
+            )}
+            {addressSuggestions.length > 0 && (
+              <div
+                className="checkout-address-suggest__list"
+                role="listbox"
+                aria-label="Подсказки адреса"
+              >
+                {addressSuggestions.map((item) => (
+                  <button
+                    key={item.place_id}
+                    type="button"
+                    role="option"
+                    className="checkout-address-suggest__item"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      selectAddress(item);
+                    }}
+                  >
+                    {item.display_name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div className="checkout-loc-actions">
             <button
               type="button"
@@ -353,7 +530,7 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
               onClick={() => getLocation()}
               disabled={loadingLocation || submitting}
             >
-              {loadingLocation ? "…" : "📍 Определить адрес"}
+              {loadingLocation ? "Определяем адрес..." : "📍 Определить адрес"}
             </button>
             <button
               type="button"
@@ -372,7 +549,16 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
                 lng={lng}
                 setLat={(v) => setLat(v)}
                 setLng={(v) => setLng(v)}
-                setAddress={setAddress}
+                setAddress={(v) => {
+                  setAddress(v);
+                  if (addressSearchTimerRef.current) {
+                    clearTimeout(addressSearchTimerRef.current);
+                    addressSearchTimerRef.current = null;
+                  }
+                  addressSearchSeqRef.current += 1;
+                  setAddressSuggestions([]);
+                  setAddressSearchLoading(false);
+                }}
               />
               <p className="checkout-map-hint">
                 Нажмите на карту, чтобы поставить точку и подставить адрес
@@ -381,7 +567,7 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
           )}
           {loadingLocation && (
             <p className="checkout-loc-status" role="status" aria-live="polite">
-              Определяем местоположение...
+              Определяем адрес...
             </p>
           )}
           {!loadingLocation && lat != null && lng != null && (
