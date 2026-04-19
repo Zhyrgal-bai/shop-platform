@@ -269,11 +269,11 @@ export const adminService = {
     const userId = requireAdminUserId();
     const url = `${API_BASE_URL}/orders/${id}`;
     const res = await fetch(url, {
-      method: "PATCH",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status, userId }),
     });
-    console.log("PATCH /orders/:id (status)", res.status);
+    console.log("PUT /orders/:id (status)", res.status);
     if (!res.ok) throw new Error(await readFetchError(res));
     const text = await res.text();
     if (!text.trim()) return null;
@@ -289,11 +289,11 @@ export const adminService = {
     const userId = requireAdminUserId();
     const url = `${API_BASE_URL}/orders/${id}`;
     const res = await fetch(url, {
-      method: "PATCH",
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ tracking, userId }),
     });
-    console.log("PATCH /orders/:id (tracking)", res.status);
+    console.log("PUT /orders/:id (tracking)", res.status);
     if (!res.ok) throw new Error(await readFetchError(res));
     const text = await res.text();
     if (!text.trim()) return null;

@@ -127,7 +127,9 @@ export default function AdminOrdersPage() {
       window.dispatchEvent(new CustomEvent("bars-shop:admin-orders-changed"));
     } catch (e) {
       console.error(e);
-      alert("Ошибка при обновлении");
+      alert(
+        e instanceof Error ? e.message : "Ошибка при обновлении"
+      );
     } finally {
       setBusyId(null);
     }
