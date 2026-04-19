@@ -1,6 +1,15 @@
-import { api, API_BASE_URL } from "./api";
+import { api, API_BASE_URL, apiAbsoluteUrl } from "./api";
 import type { Category, Product } from "../types";
 import { getWebAppUserId } from "../utils/telegramUserId";
+
+/** Относительный путь или уже полный `https://...` (не дублируем API_BASE_URL). */
+function resolveAdminUrl(path: string): string {
+  const trimmed = path.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const base = API_BASE_URL.replace(/\/$/, "");
+  const p = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+  return `${base}${p}`;
+}
 
 function requireAdminUserId(): number {
   const userId = getWebAppUserId();
@@ -25,7 +34,7 @@ async function adminPost<T>(
   body: Record<string, unknown> = {}
 ): Promise<T> {
   const userId = requireAdminUserId();
-  const url = `${API_BASE_URL}${path.startsWith("/") ? path : `/${path}`}`;
+  const url = resolveAdminUrl(path);
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -37,9 +46,7 @@ async function adminPost<T>(
 
 async function adminGet<T>(path: string): Promise<T> {
   const userId = requireAdminUserId();
-  const base = API_BASE_URL.replace(/\/$/, "");
-  const p = path.startsWith("/") ? path : `/${path}`;
-  const url = new URL(`${base}${p}`);
+  const url = new URL(resolveAdminUrl(path));
   url.searchParams.set("userId", String(userId));
   const res = await fetch(url.toString(), { method: "GET" });
   if (!res.ok) throw new Error(await readFetchError(res));
@@ -48,9 +55,9 @@ async function adminGet<T>(path: string): Promise<T> {
 
 async function adminDelete(path: string): Promise<void> {
   const userId = requireAdminUserId();
-  const p = path.startsWith("/") ? path : `/${path}`;
-  const sep = p.includes("?") ? "&" : "?";
-  const url = `${API_BASE_URL}${p}${sep}userId=${encodeURIComponent(String(userId))}`;
+  const resolved = resolveAdminUrl(path);
+  const sep = resolved.includes("?") ? "&" : "?";
+  const url = `${resolved}${sep}userId=${encodeURIComponent(String(userId))}`;
   const res = await fetch(url, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
@@ -301,18 +308,18 @@ export const adminService = {
   },
 
   async getCategories(): Promise<Category[]> {
-    const res = await api.get<Category[]>("/categories");
+    const res = await api.get<Category[]>(apiAbsoluteUrl("/categories"));
     return Array.isArray(res.data) ? res.data : [];
   },
 
   async createCategory(input: CategoryCreateInput): Promise<Category> {
-    return adminPost<Category>("/categories", {
+    return adminPost<Category>(apiAbsoluteUrl("/categories"), {
       name: input.name,
       parentId: input.parentId ?? null,
     });
   },
 
   async deleteCategory(id: number): Promise<void> {
-    await adminDelete(`/categories/${id}`);
+    await adminDelete(apiAbsoluteUrl(`/categories/${id}`));
   },
 };

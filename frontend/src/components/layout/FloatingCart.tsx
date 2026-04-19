@@ -1,44 +1,63 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 const STORAGE_KEY = "bars-floating-cart-pos";
 const BTN = 56;
 const PAD = 8;
+/** Fallback if header not in DOM yet (matches shell ~56px + padding + safe area). */
+const HEADER_FALLBACK_BOTTOM = 70;
 const DRAG_THRESHOLD = 6;
 
 type Pos = { x: number; y: number };
 
-function clampPos(x: number, y: number): Pos {
+function getHeaderBottomY(): number {
+  if (typeof window === "undefined") return HEADER_FALLBACK_BOTTOM;
+  const el = document.querySelector(".bars-header");
+  if (el instanceof HTMLElement) {
+    const bottom = el.getBoundingClientRect().bottom;
+    if (Number.isFinite(bottom) && bottom > 0) {
+      return Math.ceil(bottom) + PAD;
+    }
+  }
+  return HEADER_FALLBACK_BOTTOM;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
+}
+
+function clampPos(x: number, y: number, minY: number): Pos {
   if (typeof window === "undefined") return { x, y };
   const maxX = Math.max(PAD, window.innerWidth - BTN - PAD);
-  const maxY = Math.max(PAD, window.innerHeight - BTN - PAD);
+  const maxY = Math.max(minY, window.innerHeight - BTN - PAD);
   return {
-    x: Math.min(maxX, Math.max(PAD, x)),
-    y: Math.min(maxY, Math.max(PAD, y)),
+    x: clamp(x, PAD, maxX),
+    y: clamp(y, minY, maxY),
   };
 }
 
-function defaultPos(): Pos {
+function defaultPos(minY: number): Pos {
   if (typeof window === "undefined") return { x: 100, y: 100 };
   return clampPos(
     window.innerWidth - BTN - 22,
-    window.innerHeight - BTN - 24
+    window.innerHeight - BTN - 24,
+    minY
   );
 }
 
-function loadPos(): Pos {
-  if (typeof window === "undefined") return defaultPos();
+function loadPos(minY: number): Pos {
+  if (typeof window === "undefined") return defaultPos(minY);
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const j = JSON.parse(raw) as { x?: unknown; y?: unknown };
       if (Number.isFinite(j.x) && Number.isFinite(j.y)) {
-        return clampPos(Number(j.x), Number(j.y));
+        return clampPos(Number(j.x), Number(j.y), minY);
       }
     }
   } catch {
     /* ignore */
   }
-  return defaultPos();
+  return defaultPos(minY);
 }
 
 type Props = {
@@ -52,7 +71,8 @@ export default function FloatingCart({
   totalQuantity,
   onOpen,
 }: Props) {
-  const [pos, setPos] = useState<Pos>(loadPos);
+  const minYRef = useRef(HEADER_FALLBACK_BOTTOM);
+  const [pos, setPos] = useState<Pos>(() => loadPos(minYRef.current));
   const posRef = useRef(pos);
   posRef.current = pos;
 
@@ -65,12 +85,14 @@ export default function FloatingCart({
   const movedRef = useRef(false);
   const cleanupRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    const onResize = () => {
-      setPos((p) => clampPos(p.x, p.y));
+  useLayoutEffect(() => {
+    const syncMinY = () => {
+      minYRef.current = getHeaderBottomY();
+      setPos((p) => clampPos(p.x, p.y, minYRef.current));
     };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    syncMinY();
+    window.addEventListener("resize", syncMinY);
+    return () => window.removeEventListener("resize", syncMinY);
   }, []);
 
   useEffect(() => {
@@ -104,7 +126,8 @@ export default function FloatingCart({
     if (Math.hypot(dx, dy) > DRAG_THRESHOLD) {
       movedRef.current = true;
     }
-    setPos(clampPos(d.startX + dx, d.startY + dy));
+    minYRef.current = getHeaderBottomY();
+    setPos(clampPos(d.startX + dx, d.startY + dy, minYRef.current));
   }, []);
 
   const startDrag = useCallback(
@@ -187,7 +210,7 @@ export default function FloatingCart({
   return (
     <button
       type="button"
-      className="floating-cart"
+      className="floating-cart cart-float"
       style={{ left: pos.x, top: pos.y, right: "auto", bottom: "auto" }}
       onMouseDown={onMouseDown}
       onTouchStart={onTouchStart}

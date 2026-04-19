@@ -107,6 +107,8 @@ export default function App() {
         onClose={handleMenuClose}
         currentPage={page}
         onNavToHome={() => handleNav("home")}
+        onNavToCart={() => handleNav("cart")}
+        cartCount={totalQuantity}
         onNavToMyOrders={() => handleNav("my-orders")}
         onNavToFaq={() => handleNav("faq")}
         onNavToAdmin={goAdminSection}

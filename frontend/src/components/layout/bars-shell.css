@@ -336,6 +336,32 @@
   flex-shrink: 0;
 }
 
+.bars-drawer__link-icon--with-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bars-drawer__cart-badge {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #fff;
+  background: #dc2626;
+  border-radius: 999px;
+  border: 2px solid var(--bars-surface);
+  line-height: 1;
+}
+
 .bars-drawer__divider {
   height: 1px;
   margin: 10px 0 6px;

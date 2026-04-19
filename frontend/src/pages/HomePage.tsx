@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../services/api";
+import { api, apiAbsoluteUrl } from "../services/api";
 import { fetchMyOrders } from "../services/myOrdersApi";
 import type { Category, Product } from "../types";
 import ProductGrid from "../components/product/ProductGrid";
@@ -46,7 +46,7 @@ export default function HomePage() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await api.get<Category[]>("/categories");
+        const res = await api.get<Category[]>(apiAbsoluteUrl("/categories"));
         setCategoryTree(Array.isArray(res.data) ? res.data : []);
       } catch {
         setCategoryTree([]);

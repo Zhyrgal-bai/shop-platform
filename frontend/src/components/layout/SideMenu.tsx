@@ -24,6 +24,9 @@ type SideMenuProps = {
   onClose: () => void;
   currentPage: AppNavPage;
   onNavToHome: () => void;
+  onNavToCart: () => void;
+  /** Количество позиций в корзине (для бейджа в меню). */
+  cartCount?: number;
   onNavToMyOrders: () => void;
   onNavToFaq: () => void;
   onNavToAdmin: (section: AdminSection) => void;
@@ -66,6 +69,8 @@ export default function SideMenu({
   onClose,
   currentPage,
   onNavToHome,
+  onNavToCart,
+  cartCount = 0,
   onNavToMyOrders,
   onNavToFaq,
   onNavToAdmin,
@@ -85,6 +90,7 @@ export default function SideMenu({
   }, [open]);
 
   const homeActive = currentPage === "home";
+  const cartActive = currentPage === "cart";
   const myOrdersActive = currentPage === "my-orders";
   const faqActive = currentPage === "faq";
 
@@ -169,6 +175,23 @@ export default function SideMenu({
                     🛍
                   </span>
                   Магазин
+                </button>
+
+                <button
+                  type="button"
+                  className={`bars-drawer__link${cartActive ? " bars-drawer__link--active" : ""}`}
+                  onClick={() => {
+                    onNavToCart();
+                    onClose();
+                  }}
+                >
+                  <span className="bars-drawer__link-icon bars-drawer__link-icon--with-badge" aria-hidden>
+                    🛒
+                    {cartCount > 0 && (
+                      <span className="bars-drawer__cart-badge">{cartCount}</span>
+                    )}
+                  </span>
+                  Корзина
                 </button>
 
                 {admin && (
