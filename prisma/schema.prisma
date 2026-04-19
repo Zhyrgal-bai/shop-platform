@@ -79,6 +79,12 @@ model Order {
   customerPhone String? // телефон из формы оформления
   tracking  String? // статус доставки / комментарий для клиента
 
+  receiptUrl   String? // ссылка на фото или pdf
+  receiptType  String? // "image" | "pdf"
+
+  paymentMethod String @default("receipt") // "finik" | "receipt"
+  paymentId     String? // id платежа Finik (и др.), когда подключено
+
   items     OrderItem[]
 }
 

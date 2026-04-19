@@ -155,7 +155,11 @@ export async function sendAcceptedPaymentPromptForOrderFromApi(order: {
   id: number;
   total: number;
   user: { telegramId: bigint };
+  paymentMethod?: string | null;
 }): Promise<void> {
+  if (String(order.paymentMethod ?? "").toLowerCase() === "finik") {
+    return;
+  }
   const tgId = Number(order.user.telegramId);
   if (!Number.isFinite(tgId) || tgId <= 0) return;
   const { text, qrUrl, qrCaption } = await buildAcceptedPaymentMessage(
@@ -296,12 +300,21 @@ if (bot) {
 
         const tgId = order.customerTelegramId;
         if (tgId != null && Number.isFinite(tgId)) {
-          await sendAcceptedPaymentPromptToTelegramUser({
-            telegram: ctx.telegram,
-            telegramUserId: tgId,
-            orderId: rowAfter.id,
-            orderTotal: rowAfter.total,
-          });
+          if (String(row.paymentMethod ?? "").toLowerCase() === "finik") {
+            await ctx.telegram.sendMessage(
+              tgId,
+              `✅ Заказ #${orderId} принят.\n\n` +
+                `Оплата через Finik: после оплаты статус обновится автоматически. ` +
+                `Откройте мини-приложение → «Мои заказы».`
+            );
+          } else {
+            await sendAcceptedPaymentPromptToTelegramUser({
+              telegram: ctx.telegram,
+              telegramUserId: tgId,
+              orderId: rowAfter.id,
+              orderTotal: rowAfter.total,
+            });
+          }
         }
 
         await ctx.answerCbQuery("Обновлено ✅");

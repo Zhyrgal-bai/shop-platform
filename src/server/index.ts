@@ -7,6 +7,7 @@ import cors from "cors";
 import {
   isCloudinaryConfigured,
   uploadImageToCloudinary,
+  uploadReceiptToCloudinary,
 } from "./cloudinary.js";
 import {
   adminUserIdFromRequest,
@@ -14,7 +15,11 @@ import {
   denyIfNotAdminQuery,
   isAdmin,
 } from "./adminAuth.js";
-import { isValidOrderStatus, type OrderStatus } from "./orderStatus.js";
+import {
+  isAllowedOrderStatusTransition,
+  isValidOrderStatus,
+  type OrderStatus,
+} from "./orderStatus.js";
 import {
   adminNewOrderNotifyKeyboard,
   bot,
@@ -300,6 +305,74 @@ app.post("/telegram-webhook", async (req: Request, res: Response) => {
   } catch (e) {
     console.error("telegram-webhook:", e);
     return res.sendStatus(500);
+  }
+});
+
+/** Finik (и др.): подтверждение оплаты без чека. Тело: `{ paymentId, status }` или аналоги. */
+app.post("/finik/webhook", async (req: Request, res: Response) => {
+  try {
+    const body = req.body as Record<string, unknown>;
+    const paymentIdRaw =
+      body.paymentId ?? body.payment_id ?? body.orderId ?? body.order_id;
+    const statusRaw = body.status ?? body.payment_status ?? body.state;
+    const paymentId =
+      paymentIdRaw != null && String(paymentIdRaw).trim() !== ""
+        ? String(paymentIdRaw).trim()
+        : "";
+    const status = String(statusRaw ?? "").toLowerCase();
+
+    if (!paymentId) {
+      return res.status(400).json({ error: "paymentId required" });
+    }
+
+    const successStatuses = new Set([
+      "success",
+      "paid",
+      "completed",
+      "succeeded",
+    ]);
+    if (!successStatuses.has(status)) {
+      return res.json({ ok: true, ignored: true });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { paymentId },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+
+    if (String(order.paymentMethod ?? "").toLowerCase() !== "finik") {
+      return res.status(400).json({ error: "Not a Finik order" });
+    }
+
+    const cur = String(order.status ?? "").toUpperCase();
+    if (cur === "CONFIRMED" || cur === "SHIPPED") {
+      return res.json({ ok: true, duplicate: true });
+    }
+    if (cur === "CANCELLED") {
+      return res.status(400).json({ error: "Order cancelled" });
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: { status: "CONFIRMED" },
+      include: { user: true },
+    });
+
+    void notifyAfterOrderStatusChangeFromApi({
+      id: updated.id,
+      status: updated.status,
+      total: updated.total,
+      user: { telegramId: updated.user.telegramId },
+      paymentMethod: updated.paymentMethod,
+    });
+
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("FINIK WEBHOOK:", e);
+    return res.status(500).json({ error: "Webhook error" });
   }
 });
 
@@ -737,27 +810,43 @@ async function performOrderStatusUpdate(
   if (!isValidOrderStatus(stRaw)) {
     return { ok: false, statusCode: 400, error: "Нужен допустимый status" };
   }
-  let st: OrderStatus = stRaw as OrderStatus;
-  if (stRaw === "CONFIRMED") {
-    st = "CONFIRMED";
-  }
+  const st: OrderStatus = stRaw as OrderStatus;
   try {
-    const updated = await prisma.order.update({
-      where: { id: orderId },
-      data: { status: st },
-    });
-    const withUser = await prisma.order.findUnique({
+    const existing = await prisma.order.findUnique({
       where: { id: orderId },
       include: { user: true },
     });
-    if (withUser) {
-      void notifyAfterOrderStatusChangeFromApi({
-        id: withUser.id,
-        status: withUser.status,
-        total: withUser.total,
-        user: { telegramId: withUser.user.telegramId },
-      });
+    if (!existing) {
+      return { ok: false, statusCode: 404, error: "Заказ не найден" };
     }
+    const cur = existing.status as OrderStatus;
+    if (cur === st) {
+      return { ok: true, body: existing };
+    }
+    if (
+      !isAllowedOrderStatusTransition(cur, st, {
+        paymentMethod: existing.paymentMethod,
+      })
+    ) {
+      return {
+        ok: false,
+        statusCode: 400,
+        error: "Неверный переход статуса",
+      };
+    }
+
+    const updated = await prisma.order.update({
+      where: { id: orderId },
+      data: { status: st },
+      include: { user: true },
+    });
+    void notifyAfterOrderStatusChangeFromApi({
+      id: updated.id,
+      status: updated.status,
+      total: updated.total,
+      user: { telegramId: updated.user.telegramId },
+      paymentMethod: updated.paymentMethod,
+    });
     return { ok: true, body: updated };
   } catch (e) {
     if (
@@ -857,18 +946,35 @@ app.put("/orders/:id", async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Заказ не найден" });
     }
 
+    if (hasStatus && data.status !== undefined) {
+      const cur = exists.status as OrderStatus;
+      if (
+        cur !== data.status &&
+        !isAllowedOrderStatusTransition(cur, data.status, {
+          paymentMethod: exists.paymentMethod,
+        })
+      ) {
+        return res.status(400).json({ error: "Неверный переход статуса" });
+      }
+    }
+
     const updated = await prisma.order.update({
       where: { id: orderId },
       data,
       include: { user: true },
     });
 
-    if (hasStatus) {
+    if (
+      hasStatus &&
+      data.status !== undefined &&
+      exists.status !== data.status
+    ) {
       void notifyAfterOrderStatusChangeFromApi({
         id: updated.id,
         status: updated.status,
         total: updated.total,
         user: { telegramId: updated.user.telegramId },
+        paymentMethod: updated.paymentMethod,
       });
     }
 
@@ -987,6 +1093,13 @@ async function fetchAdminOrdersPayload() {
       (o as { customerPhone?: string | null }).customerPhone?.trim() || "—";
     const tracking =
       (o as { tracking?: string | null }).tracking?.trim() || null;
+    const receiptUrl =
+      (o as { receiptUrl?: string | null }).receiptUrl?.trim() || null;
+    const receiptType =
+      (o as { receiptType?: string | null }).receiptType?.trim() || null;
+    const paymentMethod =
+      (o as { paymentMethod?: string | null }).paymentMethod?.trim() ||
+      "receipt";
     return {
       id: o.id,
       name: o.user.name?.trim() || "Гость",
@@ -995,6 +1108,9 @@ async function fetchAdminOrdersPayload() {
       statusText: orderStatusRu(o.status),
       total: o.total,
       tracking,
+      receiptUrl,
+      receiptType,
+      paymentMethod,
     };
   });
 }
@@ -1120,6 +1236,16 @@ async function notifyAdminNewOrderTelegram(input: {
   }
 }
 
+/** Мок Finik: заменить на HTTP-запрос к API и вернуть реальные `paymentId` + `paymentUrl`. */
+function createFinikPaymentMock(input: {
+  orderId: number;
+  amount: number;
+}): { paymentId: string; paymentUrl: string } {
+  const paymentId = `finik_${Date.now()}_${input.orderId}`;
+  const paymentUrl = `https://pay.finik.kg/?amount=${input.amount}&orderId=${encodeURIComponent(paymentId)}`;
+  return { paymentId, paymentUrl };
+}
+
 // ================== CREATE ORDER ==================
 app.post("/orders", async (req: Request, res: Response) => {
   try {
@@ -1139,6 +1265,18 @@ app.post("/orders", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "Неверный номер телефона" });
   }
   const customerPhoneValue = phoneRaw;
+
+  const rawPaymentMethod = (body as { paymentMethod?: unknown }).paymentMethod;
+  const paymentMethod =
+    typeof rawPaymentMethod === "string" &&
+    (rawPaymentMethod === "finik" || rawPaymentMethod === "receipt")
+      ? rawPaymentMethod
+      : "receipt";
+  const rawPaymentId = (body as { paymentId?: unknown }).paymentId;
+  const paymentId =
+    typeof rawPaymentId === "string" && rawPaymentId.trim() !== ""
+      ? rawPaymentId.trim().slice(0, 512)
+      : null;
 
   const userNameSanitized = cleanInput(
     (body as { user?: { name?: unknown } }).user?.name
@@ -1233,6 +1371,9 @@ app.post("/orders", async (req: Request, res: Response) => {
           total: orderTotal,
           status: "NEW",
           customerPhone: customerPhoneValue,
+          paymentMethod,
+          /** Finik: id выставится после создания (мок или реальный API). */
+          paymentId: paymentMethod === "finik" ? null : paymentId,
           items: {
             create: items.map((item) => ({
               productId: Number(item.productId),
@@ -1254,19 +1395,36 @@ app.post("/orders", async (req: Request, res: Response) => {
 
     console.log("ORDER CREATED:", order);
 
+    let paymentUrl: string | null = null;
+    let orderForResponse = order;
+
+    if (paymentMethod === "finik") {
+      const finik = createFinikPaymentMock({
+        orderId: order.id,
+        amount: order.total,
+      });
+      paymentUrl = finik.paymentUrl;
+      orderForResponse = await prisma.order.update({
+        where: { id: order.id },
+        data: { paymentId: finik.paymentId },
+        include: { items: true },
+      });
+    }
+
     const address =
       addressSanitized !== "" ? addressSanitized : "—";
     const displayName =
       user.name?.trim() || userNameSanitized || "Гость";
-    const phone = order.customerPhone?.trim() || customerPhoneValue || "—";
+    const phone =
+      orderForResponse.customerPhone?.trim() || customerPhoneValue || "—";
 
     void notifyAdminNewOrderTelegram({
-      orderId: order.id,
+      orderId: orderForResponse.id,
       customerName: displayName,
       phone,
       address,
-      total: order.total,
-      items: order.items.map((i) => ({
+      total: orderForResponse.total,
+      items: orderForResponse.items.map((i) => ({
         name: i.name,
         quantity: i.quantity,
       })),
@@ -1280,7 +1438,7 @@ app.post("/orders", async (req: Request, res: Response) => {
       }
     }
 
-    res.json(order);
+    res.json({ ...orderForResponse, paymentUrl });
   } catch (error) {
     const code = error instanceof Error ? error.message : "";
     if (code === "INVALID_ITEM") {
@@ -1304,6 +1462,78 @@ app.post("/orders", async (req: Request, res: Response) => {
     }
   }
 });
+
+app.post(
+  "/orders/:id/upload-receipt",
+  upload.single("file"),
+  async (req: Request, res: Response) => {
+    try {
+      if (!isCloudinaryConfigured()) {
+        return res.status(503).json({
+          error: "Cloudinary не настроен (CLOUD_NAME, CLOUD_KEY, CLOUD_SECRET)",
+        });
+      }
+      const file = req.file;
+      if (!file?.buffer?.length) {
+        return res.status(400).json({ error: "No file" });
+      }
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) {
+        return res.status(400).json({ error: "Неверный id" });
+      }
+      const mime = file.mimetype || "";
+      const allowed =
+        mime === "application/pdf" ||
+        mime === "application/x-pdf" ||
+        mime.startsWith("image/");
+      if (!allowed) {
+        return res
+          .status(400)
+          .json({ error: "Допустимы только изображение или PDF" });
+      }
+
+      const existing = await prisma.order.findUnique({ where: { id } });
+      if (!existing) {
+        return res.status(404).json({ error: "Заказ не найден" });
+      }
+
+      if (String(existing.paymentMethod ?? "").toLowerCase() === "finik") {
+        return res
+          .status(400)
+          .json({ error: "Для оплаты Finik загрузка чека не используется" });
+      }
+
+      if (existing.receiptUrl != null && String(existing.receiptUrl).trim() !== "") {
+        return res.status(400).json({ error: "Чек уже загружен" });
+      }
+
+      if (existing.status !== "ACCEPTED") {
+        return res.status(400).json({ error: "Оплата недоступна" });
+      }
+
+      const { secureUrl, receiptType } = await uploadReceiptToCloudinary(
+        file.buffer,
+        mime
+      );
+
+      const receiptData = {
+        receiptUrl: secureUrl,
+        receiptType,
+        status: "PAID_PENDING",
+      };
+      const order = await prisma.order.update({
+        where: { id },
+        data: receiptData as Prisma.OrderUpdateInput,
+        include: { items: true, user: true },
+      });
+
+      res.json(order);
+    } catch (e) {
+      console.error("UPLOAD RECEIPT:", e);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  }
+);
 
 // ================== UPDATE PRODUCT ==================
 app.put("/products/:id", async (req: Request, res: Response) => {

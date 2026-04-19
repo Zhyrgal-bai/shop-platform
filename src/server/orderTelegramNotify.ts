@@ -11,7 +11,7 @@ function customerTextForStatus(
 ): string | null {
   if (status === "ACCEPTED") return "Заказ принят";
   if (status === "CONFIRMED") {
-    return `💰 Оплата подтверждена!\n\nВаш заказ #${orderId} готовится к отправке 📦`;
+    return `Оплата подтверждена ✅\n\nВаш заказ #${orderId} готовится к отправке 📦`;
   }
   if (status === "SHIPPED") {
     return `🚚 Заказ отправлен!\n\nВаш заказ #${orderId} уже в пути 📦`;
@@ -52,17 +52,32 @@ export async function notifyAfterOrderStatusChangeFromApi(order: {
   status: string;
   total: number;
   user: { telegramId: bigint };
+  paymentMethod?: string | null;
 }): Promise<void> {
   const status = order.status as OrderStatus;
   const tgId = Number(order.user.telegramId);
+  const isFinik = String(order.paymentMethod ?? "").toLowerCase() === "finik";
 
   if (status === "ACCEPTED" && Number.isFinite(tgId) && tgId > 0) {
     try {
-      await sendAcceptedPaymentPromptForOrderFromApi({
-        id: order.id,
-        total: order.total,
-        user: { telegramId: order.user.telegramId },
-      });
+      if (isFinik) {
+        const text =
+          `✅ Заказ #${order.id} принят.\n\n` +
+          `Оплата через Finik: после оплаты статус обновится автоматически. ` +
+          `Следите в мини-приложении → «Мои заказы».`;
+        if (bot) {
+          await bot.telegram.sendMessage(tgId, text);
+        } else {
+          await sendTelegramText(tgId, text);
+        }
+      } else {
+        await sendAcceptedPaymentPromptForOrderFromApi({
+          id: order.id,
+          total: order.total,
+          user: { telegramId: order.user.telegramId },
+          paymentMethod: order.paymentMethod ?? null,
+        });
+      }
     } catch (e) {
       console.error("notify customer ACCEPTED payment prompt:", e);
     }
