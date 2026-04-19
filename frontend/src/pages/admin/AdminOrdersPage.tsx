@@ -171,6 +171,8 @@ export default function AdminOrdersPage() {
             const busyTr = busyTrackingId === order.id;
             const receiptUrl = order.receiptUrl?.trim() ?? "";
             const hasReceipt = receiptUrl.length > 0;
+            const payMethod = (order.paymentMethod ?? "receipt").toLowerCase();
+            const isFinik = payMethod === "finik";
             return (
               <article key={order.id} className="admin-order-card">
                 <div className="admin-order-card__top">
@@ -196,6 +198,12 @@ export default function AdminOrdersPage() {
                         {order.statusText}
                       </span>
                       <span className="admin-order-card__code">{canon}</span>
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Оплата</dt>
+                    <dd>
+                      {isFinik ? "Finik" : "Чек / перевод"}
                     </dd>
                   </div>
                 </dl>
@@ -276,15 +284,25 @@ export default function AdminOrdersPage() {
                   <button
                     type="button"
                     className="admin-order-card__btn admin-order-card__btn--confirm"
-                    disabled={busy || canon !== "PAID_PENDING"}
+                    disabled={
+                      busy ||
+                      (!isFinik && canon !== "PAID_PENDING") ||
+                      (isFinik && canon !== "ACCEPTED")
+                    }
                     title={
-                      canon !== "PAID_PENDING"
-                        ? "После «Я оплатил» у клиента"
-                        : undefined
+                      isFinik
+                        ? canon !== "ACCEPTED"
+                          ? "Только для Finik после принятия заказа"
+                          : undefined
+                        : canon !== "PAID_PENDING"
+                          ? "После «Я оплатил» у клиента"
+                          : undefined
                     }
                     onClick={() => void applyStatus(order.id, "CONFIRMED")}
                   >
-                    ✅ Подтвердить оплату
+                    {isFinik
+                      ? "💳 Подтвердить оплату (Finik)"
+                      : "✅ Подтвердить оплату"}
                   </button>
                   <button
                     type="button"

@@ -1,4 +1,5 @@
 .checkout {
+  position: relative;
   padding: 12px;
   color: #fff;
   max-width: 430px;
@@ -6,6 +7,28 @@
   min-height: 100dvh;
   box-sizing: border-box;
   background: #0b0f1a;
+}
+
+.checkout-finik-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(11, 15, 26, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.checkout-finik-overlay__text {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #fff;
+  text-align: center;
+  letter-spacing: 0.02em;
 }
 
 .checkout--empty {
@@ -74,6 +97,90 @@
 .checkout .form textarea {
   min-height: 60px;
   resize: vertical;
+}
+
+.checkout-payment {
+  margin-top: 6px;
+  padding-top: 4px;
+}
+
+.checkout-payment__label {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.checkout-payment__row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.checkout-payment__opt {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 12px;
+  min-height: 72px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(55, 65, 81, 0.55);
+  color: rgba(255, 255, 255, 0.88);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: all 0.3s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.checkout-payment__opt:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(55, 65, 81, 0.75);
+}
+
+.checkout-payment__opt--active {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: linear-gradient(145deg, #dc2626, #b91c1c);
+  color: #fff;
+  box-shadow: 0 8px 22px rgba(220, 38, 38, 0.35);
+}
+
+.checkout-payment__opt-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.checkout-payment__opt-sub {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.25;
+}
+
+.checkout-payment__opt--active .checkout-payment__opt-sub {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.checkout-payment__summary {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  line-height: 1.35;
+}
+
+.checkout-payment__summary strong {
+  color: #fff;
+  font-weight: 800;
 }
 
 .checkout-footer {

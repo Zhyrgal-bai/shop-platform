@@ -3,6 +3,8 @@ export type MyOrderRow = {
   userId: number;
   total: number;
   status: string;
+  paymentMethod?: string;
+  paymentId?: string | null;
   tracking?: string | null;
   customerPhone?: string | null;
   receiptUrl?: string | null;

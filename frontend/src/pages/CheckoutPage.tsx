@@ -7,6 +7,8 @@ import { getTelegramUser, getTelegramWebAppUserId } from "../utils/telegram";
 import { cleanInput, validateKgPhone } from "../utils/orderInputSanitize";
 import "../components/ui/CheckoutPage.css";
 
+type CheckoutPaymentMethod = "finik" | "receipt";
+
 type Props = {
   onBack?: () => void;
   /** После успешного заказа (корзина уже очищена). */
@@ -45,6 +47,8 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [deliveryType, setDeliveryType] = useState("delivery");
+  const [paymentMethod, setPaymentMethod] =
+    useState<CheckoutPaymentMethod>("receipt");
   const [promo, setPromo] = useState("");
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -55,6 +59,9 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
     discount: number;
   } | null>(null);
   const [promoChecking, setPromoChecking] = useState(false);
+  const [finikRedirectMessage, setFinikRedirectMessage] = useState<
+    string | null
+  >(null);
 
   const totalPrice = items.reduce(
     (sum, item) => sum + item.price * (item.quantity ?? 1),
@@ -187,7 +194,10 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
 
     setSubmitting(true);
     try {
-      await api.post<{ id: number }>("/orders", {
+      const { data } = await api.post<{
+        id: number;
+        paymentUrl?: string | null;
+      }>("/orders", {
         ...(Number.isFinite(userId) ? { userId } : {}),
         user: {
           telegramId: Number.isFinite(Number(tg?.id)) ? Number(tg?.id) : 0,
@@ -208,7 +218,30 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
         address: orderData.address,
         promo: promoCode,
         comment: commentClean,
+        paymentMethod,
       });
+
+      const payUrl =
+        typeof data.paymentUrl === "string" && data.paymentUrl.trim() !== ""
+          ? data.paymentUrl.trim()
+          : null;
+
+      if (payUrl) {
+        setFinikRedirectMessage("Переход к оплате...");
+        clearCart();
+        setName("");
+        setPhone("");
+        setPhoneFromSavedOrder(false);
+        setAddress("");
+        setPromo("");
+        setComment("");
+        setPaymentMethod("receipt");
+        setPromoPreview(null);
+        window.setTimeout(() => {
+          window.location.href = payUrl;
+        }, 500);
+        return;
+      }
 
       alert("Заказ отправлен");
 
@@ -219,6 +252,7 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
       setAddress("");
       setPromo("");
       setComment("");
+      setPaymentMethod("receipt");
       onOrderSuccess?.();
     } catch (err) {
       console.error(err);
@@ -247,6 +281,11 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
 
   return (
     <div className="checkout">
+      {finikRedirectMessage != null && (
+        <div className="checkout-finik-overlay" role="status" aria-live="polite">
+          <p className="checkout-finik-overlay__text">{finikRedirectMessage}</p>
+        </div>
+      )}
       {onBack && (
         <button type="button" className="checkout-back" onClick={onBack}>
           ← Корзина
@@ -308,6 +347,36 @@ export default function CheckoutPage({ onBack, onOrderSuccess }: Props) {
           onChange={(e) => setComment(e.target.value)}
           rows={3}
         />
+
+        <div className="checkout-payment">
+          <p className="checkout-payment__label">Способ оплаты</p>
+          <div className="checkout-payment__row" role="group" aria-label="Способ оплаты">
+            <button
+              type="button"
+              className={`checkout-payment__opt${paymentMethod === "finik" ? " checkout-payment__opt--active" : ""}`}
+              onClick={() => setPaymentMethod("finik")}
+            >
+              <span className="checkout-payment__opt-title">💳 Finik</span>
+              <span className="checkout-payment__opt-sub">Онлайн</span>
+            </button>
+            <button
+              type="button"
+              className={`checkout-payment__opt${paymentMethod === "receipt" ? " checkout-payment__opt--active" : ""}`}
+              onClick={() => setPaymentMethod("receipt")}
+            >
+              <span className="checkout-payment__opt-title">📎 Чек / перевод</span>
+              <span className="checkout-payment__opt-sub">QR и чек в заказах</span>
+            </button>
+          </div>
+          <p className="checkout-payment__summary" aria-live="polite">
+            Выбрано:{" "}
+            <strong>
+              {paymentMethod === "finik"
+                ? "Finik (скоро)"
+                : "Чек или перевод по реквизитам"}
+            </strong>
+          </p>
+        </div>
       </div>
 
       <div className="checkout-footer">

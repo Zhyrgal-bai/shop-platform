@@ -49,6 +49,10 @@ function formatOrderDate(iso: string | undefined): string | null {
   });
 }
 
+function isFinikOrder(order: MyOrderRow): boolean {
+  return String(order.paymentMethod ?? "").toLowerCase() === "finik";
+}
+
 function OrderReceiptBlock({
   order,
   onUploaded,
@@ -62,6 +66,21 @@ function OrderReceiptBlock({
 
   const st = order.status.toUpperCase();
   const hasReceipt = Boolean(order.receiptUrl?.trim());
+
+  if (isFinikOrder(order)) {
+    if (st === "CANCELLED" || st === "CONFIRMED" || st === "SHIPPED") {
+      return null;
+    }
+    return (
+      <div className="my-orders__finik-wait" aria-live="polite">
+        <p className="my-orders__finik-wait-lead">Проверяем оплату...</p>
+        <p className="my-orders__finik-wait-sub">
+          После оплаты через Finik статус обновится автоматически (около минуты).
+          Список заказов обновляется каждые 5 с.
+        </p>
+      </div>
+    );
+  }
 
   if (st === "CANCELLED" || st === "CONFIRMED" || st === "SHIPPED") {
     return null;
@@ -152,6 +171,7 @@ function OrderReceiptBlock({
 function OrderPaymentBlock({ order }: { order: MyOrderRow }) {
   const st = order.status.toUpperCase();
   const hasReceipt = Boolean(order.receiptUrl?.trim());
+  if (isFinikOrder(order)) return null;
   if (st !== "ACCEPTED" || hasReceipt) return null;
 
   const phone = getMbankPaymentPhone();
