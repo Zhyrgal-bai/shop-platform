@@ -9,6 +9,9 @@ export type { MyOrderRow };
 
 type GlobalSettings = {
   mbank?: string | null;
+  optima?: string | null;
+  other?: string | null;
+  card?: string | null;
   qr?: string | null;
 };
 
@@ -181,15 +184,23 @@ function OrderPaymentBlock({
   if (isFinikOrder(order)) return null;
   if (st !== "ACCEPTED" || hasReceipt) return null;
 
-  const phone = settings?.mbank?.trim() || "Не указан";
+  const phone = settings?.mbank?.trim() || "";
+  const optima = settings?.optima?.trim() || "";
+  const otherBank = settings?.other?.trim() || "";
+  const card = settings?.card?.trim() || "";
   const qr = settings?.qr?.trim() || "";
 
   const copyPhone = async () => {
+    const target = phone || optima || card || otherBank;
+    if (!target) {
+      alert("Реквизиты пока не заполнены");
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(phone);
-      alert("Номер скопирован");
+      await navigator.clipboard.writeText(target);
+      alert("Реквизиты скопированы");
     } catch {
-      alert(`MBank: ${phone}`);
+      alert(target);
     }
   };
 
@@ -208,14 +219,19 @@ function OrderPaymentBlock({
       <div className="my-orders__pay-info">
         <p className="my-orders__pay-info-title">💳 Оплата заказа #{order.id}</p>
         <p className="my-orders__pay-info-sum">{order.total} сом</p>
-        <p className="my-orders__pay-info-phone">MBank: {phone}</p>
+        {phone ? <p className="my-orders__pay-info-phone">MBank: {phone}</p> : null}
+        {optima ? <p className="my-orders__pay-info-phone">Optima: {optima}</p> : null}
+        {otherBank ? (
+          <p className="my-orders__pay-info-phone">Банк: {otherBank}</p>
+        ) : null}
+        {card ? <p className="my-orders__pay-info-phone">Карта: {card}</p> : null}
       </div>
       <button
         type="button"
         className="my-orders__pay-copy-btn"
         onClick={() => void copyPhone()}
       >
-        📋 Скопировать номер
+        📋 Скопировать MBank
       </button>
     </div>
   );

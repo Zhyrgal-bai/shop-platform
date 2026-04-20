@@ -195,10 +195,16 @@ export const adminService = {
     mbank?: string;
     optima?: string;
     obank?: string;
+    other?: string;
     card?: string;
     qr?: string;
   }): Promise<unknown> {
-    return adminPost("/payment", data as Record<string, unknown>);
+    const payload = {
+      ...data,
+      // Совместимость со старым полем `obank`.
+      obank: data.obank ?? data.other,
+    } as Record<string, unknown>;
+    return adminPost("/payment", payload);
   },
 
   async deletePaymentDetail(id: number): Promise<void> {

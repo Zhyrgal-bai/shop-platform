@@ -5,27 +5,28 @@ import {
   type AdminPaymentDetail,
 } from "../../services/admin.service";
 
-const FIELDS = ["mbank", "optima", "obank", "card", "qr"] as const;
+const FIELDS = ["mbank", "optima", "other", "card", "qr"] as const;
 type PayField = (typeof FIELDS)[number];
 
 const LABELS: Record<PayField, string> = {
   mbank: "Mbank",
   optima: "Optima",
-  obank: "O!Bank / другой банк",
+  other: "O!Bank / другой банк",
   card: "Карта",
-  qr: "QR (URL картинки)",
+  qr: "QR (загрузка изображения)",
 };
 
 function rowsToMap(rows: AdminPaymentDetail[]): Record<PayField, string> {
   const m: Record<PayField, string> = {
     mbank: "",
     optima: "",
-    obank: "",
+    other: "",
     card: "",
     qr: "",
   };
   for (const r of rows) {
-    const k = r.type.toLowerCase() as PayField;
+    const raw = r.type.toLowerCase();
+    const k = (raw === "obank" ? "other" : raw) as PayField;
     if (k in m) m[k] = r.value;
   }
   return m;
@@ -35,7 +36,7 @@ export default function PaymentDetailsPanel() {
   const [values, setValues] = useState<Record<PayField, string>>({
     mbank: "",
     optima: "",
-    obank: "",
+    other: "",
     card: "",
     qr: "",
   });
@@ -43,6 +44,7 @@ export default function PaymentDetailsPanel() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(true);
+  const [qrUploading, setQrUploading] = useState(false);
 
   const load = useCallback(async () => {
     setListLoading(true);
@@ -68,7 +70,13 @@ export default function PaymentDetailsPanel() {
     setLoading(true);
     setError(null);
     try {
-      await adminService.savePaymentSettings({ ...values });
+      await adminService.savePaymentSettings({
+        mbank: values.mbank,
+        optima: values.optima,
+        other: values.other,
+        card: values.card,
+        qr: values.qr,
+      });
       await load();
     } catch (err) {
       if (axios.isAxiosError(err) && err.response?.status === 403) {
@@ -80,6 +88,23 @@ export default function PaymentDetailsPanel() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleQrUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQrUploading(true);
+    setError(null);
+    try {
+      const url = await adminService.uploadImage(file);
+      setValues((prev) => ({ ...prev, qr: url }));
+    } catch (err) {
+      console.error(err);
+      setError("Не удалось загрузить QR");
+    } finally {
+      setQrUploading(false);
+      e.target.value = "";
     }
   };
 
@@ -118,16 +143,37 @@ export default function PaymentDetailsPanel() {
             <label className="admin-field-label" htmlFor={`pay-${field}`}>
               {LABELS[field]}
             </label>
-            <input
-              id={`pay-${field}`}
-              className="admin-input"
-              value={values[field]}
-              onChange={(e) =>
-                setValues((prev) => ({ ...prev, [field]: e.target.value }))
-              }
-              placeholder={field === "qr" ? "https://…/qr.png" : ""}
-              autoComplete="off"
-            />
+            {field === "qr" ? (
+              <>
+                <input
+                  id="pay-qr-upload"
+                  className="admin-input"
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => void handleQrUpload(e)}
+                />
+                {qrUploading ? (
+                  <p className="admin-form-hint">Загрузка QR...</p>
+                ) : null}
+                {values.qr ? (
+                  <img
+                    src={values.qr}
+                    alt="QR preview"
+                    className="image-preview"
+                  />
+                ) : null}
+              </>
+            ) : (
+              <input
+                id={`pay-${field}`}
+                className="admin-input"
+                value={values[field]}
+                onChange={(e) =>
+                  setValues((prev) => ({ ...prev, [field]: e.target.value }))
+                }
+                autoComplete="off"
+              />
+            )}
           </div>
         ))}
 
