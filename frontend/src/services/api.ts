@@ -18,9 +18,9 @@ const envUrl =
     ? import.meta.env.VITE_API_URL.trim()
     : "";
 
-/** База API: `VITE_API_URL` из .env или прод-хост Render. */
+/** База API: задайте `VITE_API_URL` в `frontend/.env` (тот же публичный URL, что `API_URL` на бэкенде). */
 export const API_BASE_URL =
-  envUrl !== "" ? normalizeApiRoot(envUrl) : "https://bars-shop.onrender.com";
+  envUrl !== "" ? normalizeApiRoot(envUrl) : "";
 
 /**
  * Абсолютный URL эндпоинта (axios с baseURL игнорирует свой baseURL для absolute URL).

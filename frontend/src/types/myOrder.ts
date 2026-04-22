@@ -1,6 +1,8 @@
 export type MyOrderRow = {
   id: number;
   userId: number;
+  /** Владелец магазина (для реквизитов / multi-tenant) */
+  ownerId?: number;
   total: number;
   status: string;
   paymentMethod?: string;

@@ -19,6 +19,12 @@ function requireAdminUserId(): number {
   return userId;
 }
 
+export async function postConnectBot(
+  botToken: string
+): Promise<{ ok: boolean; shopId: number; botUsername: string }> {
+  return adminPost("/connect-bot", { botToken });
+}
+
 async function readFetchError(res: Response): Promise<string> {
   const text = await res.text();
   try {
@@ -117,12 +123,14 @@ async function fetchAdminOrders(): Promise<AdminOrderListItem[]> {
 
 export const adminService = {
   async getProducts(): Promise<Product[]> {
-    const res = await api.get<Product[]>("/products");
+    const userId = requireAdminUserId();
+    const res = await api.get<Product[]>("/products", { params: { userId } });
     return res.data;
   },
 
   async getProduct(id: number): Promise<Product> {
-    const res = await api.get<Product>(`/products/${id}`);
+    const userId = requireAdminUserId();
+    const res = await api.get<Product>(`/products/${id}`, { params: { userId } });
     return res.data;
   },
 
@@ -351,7 +359,10 @@ export const adminService = {
   },
 
   async getCategories(): Promise<Category[]> {
-    const res = await api.get<Category[]>(apiAbsoluteUrl("/categories"));
+    const userId = requireAdminUserId();
+    const res = await api.get<Category[]>(apiAbsoluteUrl("/categories"), {
+      params: { userId },
+    });
     return Array.isArray(res.data) ? res.data : [];
   },
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-const STORAGE_KEY = "bars-floating-cart-pos";
+const STORAGE_KEY = "miniapp-floating-cart-pos";
 const BTN = 56;
 const PAD = 8;
 /** Fallback if header not in DOM yet (matches shell ~56px + padding + safe area). */
@@ -11,7 +11,7 @@ type Pos = { x: number; y: number };
 
 function getHeaderBottomY(): number {
   if (typeof window === "undefined") return HEADER_FALLBACK_BOTTOM;
-  const el = document.querySelector(".bars-header");
+  const el = document.querySelector(".app-header");
   if (el instanceof HTMLElement) {
     const bottom = el.getBoundingClientRect().bottom;
     if (Number.isFinite(bottom) && bottom > 0) {

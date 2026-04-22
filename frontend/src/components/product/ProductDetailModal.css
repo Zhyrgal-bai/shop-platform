@@ -1,7 +1,7 @@
 .pdm-overlay {
   position: fixed;
   inset: 0;
-  /* Выше шапки и плавающей корзины (bars-shell) */
+  /* Выше шапки и плавающей корзины (app-shell) */
   z-index: 2400;
   display: flex;
   align-items: center;

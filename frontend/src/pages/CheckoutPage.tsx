@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useCartStore } from "../store/useCartStore";
-import { api } from "../services/api";
+import { api, apiAbsoluteUrl } from "../services/api";
 import { fetchMyOrders } from "../services/myOrdersApi";
 import { getTelegramUser, getTelegramWebAppUserId } from "../utils/telegram";
 import { cleanInput, validateKgPhone } from "../utils/orderInputSanitize";
@@ -16,18 +16,15 @@ type Props = {
   onOrderSuccess?: () => void;
 };
 
-function viteApiBase(): string {
-  const raw =
-    typeof import.meta.env.VITE_API_URL === "string"
-      ? import.meta.env.VITE_API_URL.trim()
-      : "";
-  const base = raw.replace(/\/$/, "");
-  return base !== "" ? base : "https://bars-shop.onrender.com";
-}
-
 function promoApplyUrl(): string {
-  const base = viteApiBase();
-  return new URL("/promo/apply", `${base}/`).toString();
+  if (
+    (typeof import.meta.env.VITE_API_URL !== "string" ||
+      import.meta.env.VITE_API_URL.trim() === "") &&
+    import.meta.env.DEV
+  ) {
+    console.warn("VITE_API_URL is not set — set it in frontend/.env for checkout / promos");
+  }
+  return apiAbsoluteUrl("/promo/apply");
 }
 
 const PROMO_APPLY_ERROR = "Неверный или использован";

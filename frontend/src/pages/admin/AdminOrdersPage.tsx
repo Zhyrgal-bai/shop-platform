@@ -125,7 +125,7 @@ export default function AdminOrdersPage() {
         })
       );
       void load({ silent: true });
-      window.dispatchEvent(new CustomEvent("bars-shop:admin-orders-changed"));
+      window.dispatchEvent(new CustomEvent("miniapp:admin-orders-changed"));
     } catch (e) {
       console.error(e);
       alert(
@@ -143,7 +143,7 @@ export default function AdminOrdersPage() {
       await adminService.updateOrderTracking(id, text);
       trackingDirtyRef.current.delete(id);
       await load();
-      window.dispatchEvent(new CustomEvent("bars-shop:admin-orders-changed"));
+      window.dispatchEvent(new CustomEvent("miniapp:admin-orders-changed"));
     } catch (e) {
       console.error(e);
       alert(
@@ -161,7 +161,7 @@ export default function AdminOrdersPage() {
     try {
       const deleted = await adminService.clearOrders(type);
       await load();
-      window.dispatchEvent(new CustomEvent("bars-shop:admin-orders-changed"));
+      window.dispatchEvent(new CustomEvent("miniapp:admin-orders-changed"));
       alert(`Удалено заказов: ${deleted}`);
     } catch (e) {
       console.error(e);

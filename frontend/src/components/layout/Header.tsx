@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { getTelegramUser } from "../../utils/telegram";
 import { telegramDisplayInitial } from "../../utils/telegramUserMark";
-import "./bars-shell.css";
+import { APP_NAME } from "../../config/brand";
+import "./app-shell.css";
 
 type HeaderProps = {
   menuOpen?: boolean;
@@ -29,33 +30,33 @@ export default function Header({
   const displayName = useMemo(() => telegramDisplayName(user), [user]);
 
   return (
-    <header className="bars-header">
-      <div className="bars-header__cell bars-header__cell--left">
-        <div className="bars-header__burger-wrap">
+    <header className="app-header">
+      <div className="app-header__cell app-header__cell--left">
+        <div className="app-header__burger-wrap">
           <motion.button
             type="button"
-            className={`bars-header__burger${menuOpen ? " bars-header__burger--open" : ""}`}
+            className={`app-header__burger${menuOpen ? " app-header__burger--open" : ""}`}
             onClick={onMenuToggle}
             aria-label={menuOpen ? "Закрыть меню" : "Открыть меню"}
             aria-expanded={menuOpen}
             whileTap={{ scale: 0.94 }}
           >
-            <span className="bars-header__burger-line" />
-            <span className="bars-header__burger-line" />
-            <span className="bars-header__burger-line" />
+            <span className="app-header__burger-line" />
+            <span className="app-header__burger-line" />
+            <span className="app-header__burger-line" />
           </motion.button>
           {attentionDot ? (
-            <span className="bars-header__notify-dot" title="Есть уведомления" />
+            <span className="app-header__notify-dot" title="Есть уведомления" />
           ) : null}
         </div>
       </div>
 
-      <h1 className="bars-header__logo">BARŚ</h1>
+      <h1 className="app-header__logo">{APP_NAME}</h1>
 
-      <div className="bars-header__cell bars-header__cell--right">
-        <div className="bars-header__user" title={displayName ?? undefined}>
+      <div className="app-header__cell app-header__cell--right">
+        <div className="app-header__user" title={displayName ?? undefined}>
           <div
-            className="bars-header__mark"
+            className="app-header__mark"
             aria-hidden={displayName ? true : undefined}
             title={user?.first_name?.trim() || user?.username || undefined}
           >
@@ -71,7 +72,7 @@ export default function Header({
             )}
           </div>
           {displayName ? (
-            <span className="bars-header__user-name">{displayName}</span>
+            <span className="app-header__user-name">{displayName}</span>
           ) : null}
         </div>
       </div>

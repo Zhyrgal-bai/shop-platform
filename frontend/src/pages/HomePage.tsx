@@ -6,10 +6,10 @@ import ProductGrid from "../components/product/ProductGrid";
 import ProductDetailModal from "../components/product/ProductDetailModal";
 import Toast from "../components/ui/Toast";
 import { getWebAppUserId } from "../utils/telegramUserId";
+import { buildCatalogRequestParams } from "../utils/storeParams";
 import { categoryRoots } from "../utils/categoryTree";
+import { APP_NAME, FIRST_ORDER_PROMO } from "../config/brand";
 import "../components/ui/HomePage.css";
-
-const FIRST_ORDER_PROMO = "BARS10";
 
 export default function HomePage() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -33,7 +33,12 @@ export default function HomePage() {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const res = await api.get("/products");
+        const params = buildCatalogRequestParams();
+        if (!params.shop && !params.userId) {
+          setProducts([]);
+          return;
+        }
+        const res = await api.get("/products", { params });
         setProducts(res.data || []);
       } catch (e) {
         console.log(e);
@@ -47,7 +52,14 @@ export default function HomePage() {
   useEffect(() => {
     void (async () => {
       try {
-        const res = await api.get<Category[]>(apiAbsoluteUrl("/categories"));
+        const params = buildCatalogRequestParams();
+        if (!params.shop && !params.userId) {
+          setCategoryTree([]);
+          return;
+        }
+        const res = await api.get<Category[]>(apiAbsoluteUrl("/categories"), {
+          params,
+        });
         setCategoryTree(Array.isArray(res.data) ? res.data : []);
       } catch {
         setCategoryTree([]);
@@ -143,7 +155,7 @@ export default function HomePage() {
       )}
       {/* Premium minimal hero section */}
       <section className="hero">
-        <h1 className="hero-title">BARŚ</h1>
+        <h1 className="hero-title">{APP_NAME}</h1>
         <p className="hero-subtitle">одежда</p>
       </section>
       <div className="hero-bottom-spacer" />

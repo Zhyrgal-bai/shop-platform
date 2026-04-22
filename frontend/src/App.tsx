@@ -4,6 +4,7 @@ import CheckoutPage from "./pages/CheckoutPage";
 import AdminApp from "./pages/admin/AdminApp";
 import FAQ from "./pages/FAQ";
 import MyOrders from "./pages/MyOrders";
+import ConnectBotPage from "./pages/ConnectBotPage";
 import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useCartStore } from "./store/useCartStore";
@@ -17,7 +18,14 @@ import Header from "./components/layout/Header";
 import SideMenu from "./components/layout/SideMenu";
 import FloatingCart from "./components/layout/FloatingCart";
 
-type AppNavPage = "home" | "cart" | "checkout" | "admin" | "faq" | "my-orders";
+type AppNavPage =
+  | "home"
+  | "cart"
+  | "checkout"
+  | "admin"
+  | "faq"
+  | "my-orders"
+  | "connect-bot";
 
 function myOrdersNeedAttention(rows: MyOrderRow[]): boolean {
   return rows.some((o) => {
@@ -154,6 +162,7 @@ export default function App() {
         myOrdersAttentionDot={myOrdersAttention}
         onNavToMyOrders={() => handleNav("my-orders")}
         onNavToFaq={() => handleNav("faq")}
+        onNavToConnectBot={() => handleNav("connect-bot")}
         onNavToAdmin={goAdminSection}
       />
 
@@ -161,6 +170,7 @@ export default function App() {
         {page === "home" && <HomePage />}
         {page === "faq" && <FAQ />}
         {page === "my-orders" && <MyOrders />}
+        {page === "connect-bot" && <ConnectBotPage />}
         {page === "cart" && (
           <CartPage onGoToCheckout={() => commitPage("checkout")} />
         )}

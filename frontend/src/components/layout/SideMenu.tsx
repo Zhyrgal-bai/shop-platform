@@ -6,11 +6,19 @@ import {
   telegramDisplayInitial,
   telegramDisplayName,
 } from "../../utils/telegramUserMark";
-import "./bars-shell.css";
+import { APP_NAME } from "../../config/brand";
+import "./app-shell.css";
 
 const SUPPORT_BOT_URL = "https://t.me/coffee_market_test_bot";
 
-type AppNavPage = "home" | "cart" | "checkout" | "admin" | "faq" | "my-orders";
+type AppNavPage =
+  | "home"
+  | "cart"
+  | "checkout"
+  | "admin"
+  | "faq"
+  | "my-orders"
+  | "connect-bot";
 
 type AdminSection =
   | "orders"
@@ -31,6 +39,7 @@ type SideMenuProps = {
   myOrdersAttentionDot?: boolean;
   onNavToMyOrders: () => void;
   onNavToFaq: () => void;
+  onNavToConnectBot: () => void;
   onNavToAdmin: (section: AdminSection) => void;
 };
 
@@ -76,6 +85,7 @@ export default function SideMenu({
   myOrdersAttentionDot = false,
   onNavToMyOrders,
   onNavToFaq,
+  onNavToConnectBot,
   onNavToAdmin,
 }: SideMenuProps) {
   const hash = useSyncExternalStore(subscribeHash, readHash, () => "");
@@ -96,6 +106,7 @@ export default function SideMenu({
   const cartActive = currentPage === "cart";
   const myOrdersActive = currentPage === "my-orders";
   const faqActive = currentPage === "faq";
+  const connectBotActive = currentPage === "connect-bot";
 
   const openSupport = () => {
     window.open(SUPPORT_BOT_URL, "_blank", "noopener,noreferrer");
@@ -107,8 +118,8 @@ export default function SideMenu({
       {open && (
         <>
           <motion.div
-            key="bars-overlay"
-            className="bars-overlay"
+            key="app-overlay"
+            className="app-overlay"
             role="presentation"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -117,8 +128,8 @@ export default function SideMenu({
             onClick={onClose}
           />
           <motion.aside
-            key="bars-drawer"
-            className="bars-drawer"
+            key="app-drawer"
+            className="app-drawer"
             role="dialog"
             aria-modal="true"
             aria-label="Меню"
@@ -135,35 +146,35 @@ export default function SideMenu({
               }
             }}
           >
-            <div className="bars-drawer__pull" aria-hidden />
-            <div className="bars-drawer__scroll">
-              <div className="bars-drawer__brand">
+            <div className="app-drawer__pull" aria-hidden />
+            <div className="app-drawer__scroll">
+              <div className="app-drawer__brand">
                 <button
                   type="button"
-                  className="bars-drawer__brand-btn"
+                  className="app-drawer__brand-btn"
                   onClick={() => {
                     onNavToHome();
                     onClose();
                   }}
                 >
-                  <div className="bars-drawer__brand-title">BARŚ</div>
-                  <div className="bars-drawer__brand-tag">одежда</div>
+                  <div className="app-drawer__brand-title">{APP_NAME}</div>
+                  <div className="app-drawer__brand-tag">одежда</div>
                 </button>
               </div>
 
-              <nav className="bars-drawer__nav" aria-label="Разделы">
+              <nav className="app-drawer__nav" aria-label="Разделы">
                 <button
                   type="button"
-                  className={`bars-drawer__link bars-drawer__link--orders${myOrdersActive ? " bars-drawer__link--active" : ""}`}
+                  className={`app-drawer__link app-drawer__link--orders${myOrdersActive ? " app-drawer__link--active" : ""}`}
                   onClick={() => {
                     onNavToMyOrders();
                     onClose();
                   }}
                 >
                   {myOrdersAttentionDot && !myOrdersActive ? (
-                    <span className="bars-drawer__orders-attention-dot" aria-hidden />
+                    <span className="app-drawer__orders-attention-dot" aria-hidden />
                   ) : null}
-                  <span className="bars-drawer__link-icon" aria-hidden>
+                  <span className="app-drawer__link-icon" aria-hidden>
                     📦
                   </span>
                   Мои заказы
@@ -171,13 +182,13 @@ export default function SideMenu({
 
                 <button
                   type="button"
-                  className={`bars-drawer__link${homeActive ? " bars-drawer__link--active" : ""}`}
+                  className={`app-drawer__link${homeActive ? " app-drawer__link--active" : ""}`}
                   onClick={() => {
                     onNavToHome();
                     onClose();
                   }}
                 >
-                  <span className="bars-drawer__link-icon" aria-hidden>
+                  <span className="app-drawer__link-icon" aria-hidden>
                     🛍
                   </span>
                   Магазин
@@ -185,16 +196,16 @@ export default function SideMenu({
 
                 <button
                   type="button"
-                  className={`bars-drawer__link${cartActive ? " bars-drawer__link--active" : ""}`}
+                  className={`app-drawer__link${cartActive ? " app-drawer__link--active" : ""}`}
                   onClick={() => {
                     onNavToCart();
                     onClose();
                   }}
                 >
-                  <span className="bars-drawer__link-icon bars-drawer__link-icon--with-badge" aria-hidden>
+                  <span className="app-drawer__link-icon app-drawer__link-icon--with-badge" aria-hidden>
                     🛒
                     {cartCount > 0 && (
-                      <span className="bars-drawer__cart-badge">{cartCount}</span>
+                      <span className="app-drawer__cart-badge">{cartCount}</span>
                     )}
                   </span>
                   Корзина
@@ -202,7 +213,7 @@ export default function SideMenu({
 
                 {admin && (
                   <>
-                    <div className="bars-drawer__divider" aria-hidden />
+                    <div className="app-drawer__divider" aria-hidden />
                     {ADMIN_LINKS.map(({ section, icon, label }) => {
                       const isActive =
                         currentPage === "admin" && adminActive === section;
@@ -210,13 +221,13 @@ export default function SideMenu({
                         <button
                           key={section}
                           type="button"
-                          className={`bars-drawer__link${isActive ? " bars-drawer__link--active" : ""}`}
+                          className={`app-drawer__link${isActive ? " app-drawer__link--active" : ""}`}
                           onClick={() => {
                             onNavToAdmin(section);
                             onClose();
                           }}
                         >
-                          <span className="bars-drawer__link-icon" aria-hidden>
+                          <span className="app-drawer__link-icon" aria-hidden>
                             {icon}
                           </span>
                           {label}
@@ -226,24 +237,38 @@ export default function SideMenu({
                   </>
                 )}
 
-                <div className="bars-drawer__divider" aria-hidden />
+                <div className="app-drawer__divider" aria-hidden />
 
                 <button
                   type="button"
-                  className={`bars-drawer__link${faqActive ? " bars-drawer__link--active" : ""}`}
+                  className={`app-drawer__link${connectBotActive ? " app-drawer__link--active" : ""}`}
+                  onClick={() => {
+                    onNavToConnectBot();
+                    onClose();
+                  }}
+                >
+                  <span className="app-drawer__link-icon" aria-hidden>
+                    🤖
+                  </span>
+                  Подключить бота
+                </button>
+
+                <button
+                  type="button"
+                  className={`app-drawer__link${faqActive ? " app-drawer__link--active" : ""}`}
                   onClick={() => {
                     onNavToFaq();
                     onClose();
                   }}
                 >
-                  <span className="bars-drawer__link-icon" aria-hidden>
+                  <span className="app-drawer__link-icon" aria-hidden>
                     ❓
                   </span>
                   FAQ
                 </button>
 
-                <button type="button" className="bars-drawer__link" onClick={openSupport}>
-                  <span className="bars-drawer__link-icon" aria-hidden>
+                <button type="button" className="app-drawer__link" onClick={openSupport}>
+                  <span className="app-drawer__link-icon" aria-hidden>
                     💬
                   </span>
                   Поддержка
@@ -251,23 +276,23 @@ export default function SideMenu({
               </nav>
             </div>
 
-            <div className="bars-drawer__footer">
-              <div className="bars-drawer__user">
-                <div className="bars-drawer__user-avatar" aria-hidden>
+            <div className="app-drawer__footer">
+              <div className="app-drawer__user">
+                <div className="app-drawer__user-avatar" aria-hidden>
                   {user?.photo_url ? (
                     <img src={user.photo_url} alt="" width={44} height={44} />
                   ) : (
                     telegramDisplayInitial(user)
                   )}
                 </div>
-                <div className="bars-drawer__user-meta">
-                  <div className="bars-drawer__user-name">
+                <div className="app-drawer__user-meta">
+                  <div className="app-drawer__user-name">
                     {telegramDisplayName(user)}
                   </div>
                   {user?.username ? (
-                    <div className="bars-drawer__user-handle">@{user.username}</div>
+                    <div className="app-drawer__user-handle">@{user.username}</div>
                   ) : (
-                    <div className="bars-drawer__user-handle">Telegram</div>
+                    <div className="app-drawer__user-handle">Telegram</div>
                   )}
                 </div>
               </div>

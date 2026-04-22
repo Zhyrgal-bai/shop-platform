@@ -46,10 +46,10 @@ export default function AdminAnalyticsPage() {
 
   useEffect(() => {
     const onOrdersChanged = () => void load();
-    window.addEventListener("bars-shop:admin-orders-changed", onOrdersChanged);
+    window.addEventListener("miniapp:admin-orders-changed", onOrdersChanged);
     return () =>
       window.removeEventListener(
-        "bars-shop:admin-orders-changed",
+        "miniapp:admin-orders-changed",
         onOrdersChanged
       );
   }, [load]);

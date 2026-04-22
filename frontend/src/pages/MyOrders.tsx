@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { fetchMyOrders } from "../services/myOrdersApi";
 import { apiAbsoluteUrl } from "../services/api";
 import { getWebAppUserId } from "../utils/telegramUserId";
+import { getActiveShopId } from "../utils/storeParams";
 import type { MyOrderRow } from "../types/myOrder";
 import "./MyOrders.css";
 
@@ -59,9 +60,11 @@ function isFinikOrder(order: MyOrderRow): boolean {
 
 function OrderReceiptBlock({
   order,
+  userId,
   onUploaded,
 }: {
   order: MyOrderRow;
+  userId: number;
   onUploaded: () => Promise<void>;
 }) {
   const [file, setFile] = useState<File | null>(null);
@@ -120,11 +123,12 @@ function OrderReceiptBlock({
     setLoading(true);
     const form = new FormData();
     form.append("file", file);
+    form.append("userId", String(userId));
     try {
-      const res = await fetch(
-        apiAbsoluteUrl(`/orders/${order.id}/upload-receipt`),
-        { method: "POST", body: form }
-      );
+      const res = await fetch(apiAbsoluteUrl(`/orders/${order.id}/upload-receipt`), {
+        method: "POST",
+        body: form,
+      });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         const msg =
@@ -253,10 +257,14 @@ export default function MyOrders() {
       return;
     }
     try {
-      const [data, settingsRes] = await Promise.all([
-        fetchMyOrders(userId),
-        fetch(apiAbsoluteUrl("/settings"), { method: "GET" }),
-      ]);
+      const data = await fetchMyOrders(userId);
+      const shop =
+        getActiveShopId() ||
+        (data[0]?.ownerId != null ? String(data[0].ownerId) : null);
+      const settingsUrl = new URL(apiAbsoluteUrl("/settings"));
+      settingsUrl.searchParams.set("userId", String(userId));
+      if (shop) settingsUrl.searchParams.set("shop", shop);
+      const settingsRes = await fetch(settingsUrl.toString(), { method: "GET" });
       const settingsData = (await settingsRes
         .json()
         .catch(() => ({}))) as GlobalSettings;
@@ -353,7 +361,7 @@ export default function MyOrders() {
                 <p className="my-orders__tracking">📍 {order.tracking}</p>
               )}
               <OrderPaymentBlock order={order} settings={settings} />
-              <OrderReceiptBlock order={order} onUploaded={load} />
+              <OrderReceiptBlock order={order} userId={userId} onUploaded={load} />
               {order.items != null && order.items.length > 0 && (
                 <ul className="my-orders__items">
                   {order.items.map((it) => (
