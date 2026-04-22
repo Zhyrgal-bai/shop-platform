@@ -48,9 +48,10 @@ function fieldValue(
 }
 
 export async function listPaymentDetailsFromDb(
-  client: PrismaClient
+  client: PrismaClient,
+  ownerId: number
 ): Promise<PaymentDetailRecord[]> {
-  const row = await client.paymentSettings.findUnique({ where: { id: 1 } });
+  const row = await client.paymentSettings.findUnique({ where: { ownerId } });
   if (!row) return [];
   const out: PaymentDetailRecord[] = [];
   for (const type of ORDER) {
@@ -63,6 +64,7 @@ export async function listPaymentDetailsFromDb(
 
 export async function upsertPaymentSettings(
   client: PrismaClient,
+  ownerId: number,
   body: Record<string, unknown>
 ): Promise<PaymentSettings> {
   const data = {
@@ -73,8 +75,8 @@ export async function upsertPaymentSettings(
     qr: strOrNull(body.qr),
   };
   return client.paymentSettings.upsert({
-    where: { id: 1 },
-    create: { id: 1, ...data },
+    where: { ownerId },
+    create: { ownerId, ...data },
     update: data,
   });
 }
@@ -82,14 +84,15 @@ export async function upsertPaymentSettings(
 /** Синтетический id строки списка → очистить поле в настройках. */
 export async function clearPaymentFieldByRowId(
   client: PrismaClient,
+  ownerId: number,
   rowId: number
 ): Promise<boolean> {
   const type = ID_TO_TYPE.get(rowId);
   if (!type) return false;
-  const exists = await client.paymentSettings.findUnique({ where: { id: 1 } });
+  const exists = await client.paymentSettings.findUnique({ where: { ownerId } });
   if (!exists) return false;
   await client.paymentSettings.update({
-    where: { id: 1 },
+    where: { ownerId },
     data: { [type]: null },
   });
   return true;

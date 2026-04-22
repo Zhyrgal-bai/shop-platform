@@ -18,20 +18,28 @@ const CATEGORY_TREE = [
 ] as const;
 
 async function main() {
+  const owner = await prisma.user.upsert({
+    where: { telegramId: "seed-owner" },
+    update: {},
+    create: { telegramId: "seed-owner", name: "Seed Owner" },
+  });
+
   for (const group of CATEGORY_TREE) {
     let parent = await prisma.category.findFirst({
-      where: { name: group.name, parentId: null },
+      where: { name: group.name, parentId: null, ownerId: owner.id },
     });
     if (!parent) {
-      parent = await prisma.category.create({ data: { name: group.name } });
+      parent = await prisma.category.create({
+        data: { name: group.name, ownerId: owner.id },
+      });
     }
     for (const sub of group.children) {
       const exists = await prisma.category.findFirst({
-        where: { name: sub, parentId: parent.id },
+        where: { name: sub, parentId: parent.id, ownerId: owner.id },
       });
       if (!exists) {
         await prisma.category.create({
-          data: { name: sub, parentId: parent.id },
+          data: { name: sub, parentId: parent.id, ownerId: owner.id },
         });
       }
     }

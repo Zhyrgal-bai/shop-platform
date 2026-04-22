@@ -1,5 +1,7 @@
 import {
   bot,
+  getBotForOwner,
+  getBotTokenForOwner,
   getNotifyTargetChatId,
   sendAcceptedPaymentPromptForOrderFromApi,
 } from "../bot/bot.js";
@@ -21,9 +23,15 @@ function customerTextForStatus(
 
 async function sendTelegramText(
   chatId: string | number,
-  text: string
+  text: string,
+  ownerId?: number
 ): Promise<void> {
-  const token = process.env.BOT_TOKEN;
+  const token =
+    (ownerId != null ? getBotTokenForOwner(ownerId) : undefined) ||
+    process.env.BOT_TOKEN?.trim() ||
+    process.env.BOT_TOKENS?.split(/[,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)[0];
   if (!token) return;
   try {
     const res = await fetch(
@@ -49,9 +57,10 @@ async function sendTelegramText(
  */
 export async function notifyAfterOrderStatusChangeFromApi(order: {
   id: number;
+  ownerId: number;
   status: string;
   total: number;
-  user: { telegramId: bigint };
+  user: { telegramId: string };
   paymentMethod?: string | null;
 }): Promise<void> {
   const status = order.status as OrderStatus;
@@ -65,14 +74,16 @@ export async function notifyAfterOrderStatusChangeFromApi(order: {
           `✅ Заказ #${order.id} принят.\n\n` +
           `Оплата через Finik: после оплаты статус обновится автоматически. ` +
           `Следите в мини-приложении → «Мои заказы».`;
-        if (bot) {
-          await bot.telegram.sendMessage(tgId, text);
+        const tBot = getBotForOwner(order.ownerId) ?? bot;
+        if (tBot) {
+          await tBot.telegram.sendMessage(tgId, text);
         } else {
-          await sendTelegramText(tgId, text);
+          await sendTelegramText(tgId, text, order.ownerId);
         }
       } else {
         await sendAcceptedPaymentPromptForOrderFromApi({
           id: order.id,
+          ownerId: order.ownerId,
           total: order.total,
           user: { telegramId: order.user.telegramId },
           paymentMethod: order.paymentMethod ?? null,
@@ -84,29 +95,31 @@ export async function notifyAfterOrderStatusChangeFromApi(order: {
   } else {
     const text = customerTextForStatus(status, order.id);
     if (text != null && Number.isFinite(tgId) && tgId > 0) {
-      if (bot) {
+      const tBot = getBotForOwner(order.ownerId) ?? bot;
+      if (tBot) {
         try {
-          await bot.telegram.sendMessage(tgId, text);
+          await tBot.telegram.sendMessage(tgId, text);
         } catch (e) {
           console.error("notify customer (bot):", e);
         }
       } else {
-        await sendTelegramText(tgId, text);
+        await sendTelegramText(tgId, text, order.ownerId);
       }
     }
   }
 
-  const adminChat = getNotifyTargetChatId();
+  const adminChat = getNotifyTargetChatId(order.ownerId);
   if (adminChat == null) return;
 
   const adminLine = `📱 Заказ #${order.id} → ${order.status}\n(обновлено в приложении)`;
-  if (bot) {
+  const tBot = getBotForOwner(order.ownerId) ?? bot;
+  if (tBot) {
     try {
-      await bot.telegram.sendMessage(adminChat, adminLine);
+      await tBot.telegram.sendMessage(adminChat, adminLine);
     } catch (e) {
       console.error("notify admin (bot):", e);
     }
   } else {
-    await sendTelegramText(adminChat, adminLine);
+    await sendTelegramText(adminChat, adminLine, order.ownerId);
   }
 }

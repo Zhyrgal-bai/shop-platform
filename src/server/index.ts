@@ -23,7 +23,12 @@ import {
 import {
   adminNewOrderNotifyKeyboard,
   bot,
+  bots,
+  getBotForOwner,
+  getDynamicOwnerBot,
   getNotifyTargetChatId,
+  initDynamicUserBotsFromDatabase,
+  registerDynamicUserBot,
 } from "../bot/bot.js";
 import { prisma } from "./db.js";
 import {
@@ -51,7 +56,14 @@ const upload = multer({
   limits: { fileSize: 8 * 1024 * 1024 },
 });
 
-console.log("BOT TOKEN:", process.env.BOT_TOKEN ? "set" : "missing");
+console.log(
+  "BOTS:",
+  process.env.BOT_TOKENS
+    ? `${String(process.env.BOT_TOKENS).split(/[,;]+/).filter(Boolean).length} tokens (BOT_TOKENS)`
+    : process.env.BOT_TOKEN
+      ? "1 token (BOT_TOKEN)"
+      : "missing"
+);
 console.log("CHAT ID env:", process.env.CHAT_ID ?? "(empty)");
 
 type OrderTotalBody = {
@@ -152,63 +164,10 @@ function parseVariantColorInput(
   return { error: `Вариант ${n}: неверный формат цвета` };
 }
 
-type SeedCategoryNode = {
-  name: string;
-  children?: SeedCategoryNode[];
-};
-
-const BASE_CATEGORY_TREE: SeedCategoryNode[] = [
-  {
-    name: "Верх",
-    children: [{ name: "Худи" }, { name: "Футболки" }, { name: "Свитшоты" }],
-  },
-  {
-    name: "Низ",
-    children: [{ name: "Штаны" }, { name: "Шорты" }],
-  },
-  {
-    name: "Аксессуары",
-    children: [{ name: "Кепки" }, { name: "Сумки" }],
-  },
-];
-
 function clampDiscountPercent(n: unknown): number {
   const v = Number(n);
   if (!Number.isFinite(v)) return 0;
   return Math.min(100, Math.max(0, Math.round(v)));
-}
-
-
-async function ensureBaseCategories(): Promise<void> {
-  for (const main of BASE_CATEGORY_TREE) {
-    const parentExisting = await prisma.category.findFirst({
-      where: { name: main.name, parentId: null },
-    });
-    const parent =
-      parentExisting ??
-      (await prisma.category.create({
-        data: { name: main.name },
-      }));
-    for (const child of main.children ?? []) {
-      const exists = await prisma.category.findFirst({
-        where: { name: child.name, parentId: parent.id },
-      });
-      if (!exists) {
-        await prisma.category.create({
-          data: { name: child.name, parentId: parent.id },
-        });
-      }
-    }
-  }
-}
-
-async function getDefaultLeafCategoryId(): Promise<number | null> {
-  const leaf = await prisma.category.findFirst({
-    where: { parentId: { not: null } },
-    orderBy: [{ parentId: "asc" }, { id: "asc" }],
-    select: { id: true },
-  });
-  return leaf?.id ?? null;
 }
 
 function parseVariantSizes(
@@ -292,19 +251,190 @@ app.use(
 );
 app.use(express.json());
 
-const TELEGRAM_WEBHOOK_URL =
-  "https://bars-shop.onrender.com/telegram-webhook";
+function telegramIdFromRequest(req: Request): string | null {
+  const rawBody = (req.body as { userId?: unknown } | undefined)?.userId;
+  const rawQuery = req.query.userId;
+  const raw = rawBody ?? (Array.isArray(rawQuery) ? rawQuery[0] : rawQuery);
+  if (raw === undefined || raw === null) return null;
+  const telegramId = String(raw).trim();
+  return telegramId ? telegramId : null;
+}
 
+async function getOrCreateOwnerByTelegram(
+  tx: typeof prisma,
+  telegramId: string,
+  fallbackName?: string | null
+) {
+  const normalizedName = String(fallbackName ?? "").trim() || null;
+  const existing = await tx.user.findUnique({ where: { telegramId } });
+  if (existing) {
+    if (!existing.name && normalizedName) {
+      return tx.user.update({
+        where: { id: existing.id },
+        data: { name: normalizedName },
+      });
+    }
+    return existing;
+  }
+  return tx.user.create({
+    data: {
+      telegramId,
+      name: normalizedName,
+    },
+  });
+}
+
+async function requireOwner(req: Request, res: Response) {
+  const telegramId = telegramIdFromRequest(req);
+  if (!telegramId) {
+    res.status(400).json({ error: "Нужен userId (Telegram)" });
+    return null;
+  }
+  return getOrCreateOwnerByTelegram(prisma, telegramId);
+}
+
+/** `?shop=123` — id владельца витрины; иначе владелец = пользователь `userId` (Telegram). */
+function shopIdFromRequest(req: Request): number | null {
+  const raw = req.query.shop;
+  const q = Array.isArray(raw) ? raw[0] : raw;
+  if (q === undefined || q === null || String(q).trim() === "") return null;
+  const n = Number(q);
+  if (Number.isInteger(n) && n > 0) return n;
+  return null;
+}
+
+/** Публичная витрина: владелец магазина либо из `shop`, либо (админ) из `userId`. */
+async function resolveStoreTenant(
+  req: Request,
+  res: Response
+) {
+  const shop = shopIdFromRequest(req);
+  if (shop != null) {
+    const u = await prisma.user.findUnique({ where: { id: shop } });
+    if (!u) {
+      res.status(400).json({ error: "Магазин не найден" });
+      return null;
+    }
+    return u;
+  }
+  return requireOwner(req, res);
+}
+
+function trimTrailingSlash(u: string): string {
+  return u.replace(/\/$/, "");
+}
+
+const publicApiBase = process.env.API_URL?.trim()
+  ? trimTrailingSlash(process.env.API_URL.trim())
+  : "";
+
+app.post(
+  "/telegram-webhook/:botIndex",
+  async (req: Request, res: Response) => {
+    const idx = Number(req.params.botIndex);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= bots.length) {
+      return res.sendStatus(404);
+    }
+    const tBot = bots[idx];
+    if (!tBot) {
+      return res.sendStatus(503);
+    }
+    try {
+      await tBot.handleUpdate(req.body);
+      return res.sendStatus(200);
+    } catch (e) {
+      console.error("telegram-webhook:", idx, e);
+      return res.sendStatus(500);
+    }
+  }
+);
+
+/** Старые деплои с одним ботом: тот же обработчик, что бот[0]. */
 app.post("/telegram-webhook", async (req: Request, res: Response) => {
-  if (!bot) {
+  if (!bots[0]) {
     return res.sendStatus(503);
   }
   try {
-    await bot.handleUpdate(req.body);
+    await bots[0].handleUpdate(req.body);
     return res.sendStatus(200);
   } catch (e) {
-    console.error("telegram-webhook:", e);
+    console.error("telegram-webhook (legacy):", e);
     return res.sendStatus(500);
+  }
+});
+
+/** Клиентский бот (токен из `User.botToken`). */
+app.post(
+  "/telegram-webhook/owner/:ownerId",
+  async (req: Request, res: Response) => {
+    const ownerId = Number(req.params.ownerId);
+    if (!Number.isInteger(ownerId) || ownerId <= 0) {
+      return res.sendStatus(400);
+    }
+    const tBot = getDynamicOwnerBot(ownerId);
+    if (!tBot) {
+      return res.sendStatus(404);
+    }
+    try {
+      await tBot.handleUpdate(req.body);
+      return res.sendStatus(200);
+    } catch (e) {
+      console.error("telegram-webhook/owner:", ownerId, e);
+      return res.sendStatus(500);
+    }
+  }
+);
+
+/** Сохранить токен @BotFather и зарегистрировать бота (вебхук + /start). */
+app.post("/connect-bot", async (req: Request, res: Response) => {
+  try {
+    const telegramId = telegramIdFromRequest(req);
+    if (!telegramId) {
+      return res.status(400).json({ error: "Нужен userId (Telegram)" });
+    }
+    const token = String(
+      (req.body as { botToken?: unknown })?.botToken ?? ""
+    ).trim();
+    if (!token) {
+      return res.status(400).json({ error: "Вставьте токен бота" });
+    }
+
+    const meRes = await fetch(
+      `https://api.telegram.org/bot${encodeURIComponent(token)}/getMe`
+    );
+    const meJson = (await meRes.json().catch(() => ({}))) as {
+      ok?: boolean;
+      result?: { username?: string; id?: number };
+    };
+    if (!meRes.ok || !meJson.ok || !meJson.result) {
+      return res.status(400).json({ error: "Недействительный токен бота" });
+    }
+
+    const user = await getOrCreateOwnerByTelegram(prisma, telegramId);
+    const conflict = await prisma.user.findFirst({
+      where: { botToken: token, id: { not: user.id } },
+    });
+    if (conflict) {
+      return res
+        .status(409)
+        .json({ error: "Этот бот уже подключён к другому магазину" });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { botToken: token },
+    });
+
+    await registerDynamicUserBot({ id: user.id, botToken: token });
+
+    return res.json({
+      ok: true,
+      shopId: user.id,
+      botUsername: meJson.result.username ?? "",
+    });
+  } catch (e) {
+    console.error("connect-bot:", e);
+    return res.status(500).json({ error: "Не удалось подключить бота" });
   }
 });
 
@@ -363,6 +493,7 @@ app.post("/finik/webhook", async (req: Request, res: Response) => {
 
     void notifyAfterOrderStatusChangeFromApi({
       id: updated.id,
+      ownerId: updated.ownerId,
       status: updated.status,
       total: updated.total,
       user: { telegramId: updated.user.telegramId },
@@ -478,12 +609,16 @@ app.post(
 );
 
 // ================== PAYMENT (Prisma singleton id=1) ==================
-app.get("/settings", async (_req: Request, res: Response) => {
+app.get("/settings", async (req: Request, res: Response) => {
   try {
-    let settings = await prisma.paymentSettings.findUnique({ where: { id: 1 } });
+    const owner = await resolveStoreTenant(req, res);
+    if (!owner) return;
+    let settings = await prisma.paymentSettings.findUnique({
+      where: { ownerId: owner.id },
+    });
     if (!settings) {
       settings = await prisma.paymentSettings.create({
-        data: { id: 1 },
+        data: { ownerId: owner.id },
       });
     }
     // `other` — совместимый алиас для клиентов, ожидающих это поле.
@@ -500,6 +635,8 @@ app.get("/settings", async (_req: Request, res: Response) => {
 app.post("/settings", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     const body = req.body as Record<string, unknown>;
     const data = {
       mbank: body.mbank,
@@ -509,7 +646,7 @@ app.post("/settings", async (req: Request, res: Response) => {
       card: body.card,
       qr: body.qr,
     } as Record<string, unknown>;
-    const settings = await upsertPaymentSettings(prisma, data);
+    const settings = await upsertPaymentSettings(prisma, owner.id, data);
     return res.json({
       ...settings,
       other: settings.obank,
@@ -523,7 +660,9 @@ app.post("/settings", async (req: Request, res: Response) => {
 app.post("/payment/list", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
-    res.json(await listPaymentDetailsFromDb(prisma));
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
+    res.json(await listPaymentDetailsFromDb(prisma, owner.id));
   } catch (e) {
     console.error("PAYMENT LIST ERROR:", e);
     res.status(500).json({ error: "Server error" });
@@ -533,9 +672,12 @@ app.post("/payment/list", async (req: Request, res: Response) => {
 app.post("/payment", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     console.log("PAYMENT SAVE:", req.body);
     const saved = await upsertPaymentSettings(
       prisma,
+      owner.id,
       req.body as Record<string, unknown>
     );
     res.json(saved);
@@ -548,12 +690,14 @@ app.post("/payment", async (req: Request, res: Response) => {
 app.delete("/payment/:id", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Неверный id" });
     }
 
-    const ok = await clearPaymentFieldByRowId(prisma, id);
+    const ok = await clearPaymentFieldByRowId(prisma, owner.id, id);
     if (!ok) {
       return res.status(404).json({ error: "Не найдено" });
     }
@@ -664,7 +808,10 @@ app.delete("/promo/:code", async (req: Request, res: Response) => {
 // ================== CATEGORIES ==================
 app.get("/categories", async (_req: Request, res: Response) => {
   try {
+    const owner = await resolveStoreTenant(_req, res);
+    if (!owner) return;
     const categories = await prisma.category.findMany({
+      where: { ownerId: owner.id },
       include: { children: true },
       orderBy: [{ parentId: "asc" }, { id: "asc" }],
     });
@@ -677,6 +824,8 @@ app.get("/categories", async (_req: Request, res: Response) => {
 
 app.post("/categories", async (req: Request, res: Response) => {
   try {
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     const body = req.body as { name?: unknown; parentId?: unknown };
     const name = String(body.name ?? "").trim();
     if (!name) {
@@ -688,7 +837,7 @@ app.post("/categories", async (req: Request, res: Response) => {
         ? null
         : Number(parentIdRaw);
     const category = await prisma.category.create({
-      data: { name, parentId },
+      data: { name, parentId, ownerId: owner.id },
     });
     res.json(category);
   } catch (e) {
@@ -700,6 +849,8 @@ app.post("/categories", async (req: Request, res: Response) => {
 app.delete("/categories/:id", async (req: Request, res: Response) => {
   if (!denyIfNotAdminQuery(req, res)) return;
   try {
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Неверный id" });
@@ -712,6 +863,9 @@ app.delete("/categories/:id", async (req: Request, res: Response) => {
       },
     });
     if (!row) {
+      return res.status(404).json({ error: "Категория не найдена" });
+    }
+    if (row.ownerId !== owner.id) {
       return res.status(404).json({ error: "Категория не найдена" });
     }
     if (row.children.length > 0) {
@@ -732,6 +886,8 @@ app.delete("/categories/:id", async (req: Request, res: Response) => {
 app.post("/products", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     console.log("PRODUCT CREATE DATA:", req.body);
     const body = req.body as {
       name?: unknown;
@@ -787,9 +943,9 @@ app.post("/products", async (req: Request, res: Response) => {
     }
     const category = await prisma.category.findUnique({
       where: { id: normalizedCategoryId },
-      select: { id: true, parentId: true },
+      select: { id: true, parentId: true, ownerId: true },
     });
-    if (!category || category.parentId == null) {
+    if (!category || category.parentId == null || category.ownerId !== owner.id) {
       return res.status(400).json({ error: "Выберите подкатегорию" });
     }
 
@@ -808,6 +964,7 @@ app.post("/products", async (req: Request, res: Response) => {
         isPopular: Boolean(isPopular),
         isSale: Boolean(isSale),
         discountPercent: clampDiscountPercent(discountPercent),
+        ownerId: owner.id,
         variants: {
           create: cleanVariants.map((v) => ({
             color: v.color,
@@ -851,6 +1008,7 @@ function jsonWithBigInt<T>(data: T): unknown {
 
 async function performOrderStatusUpdate(
   orderId: number,
+  ownerId: number,
   statusRaw: unknown
 ): Promise<
   | { ok: true; body: unknown }
@@ -867,7 +1025,7 @@ async function performOrderStatusUpdate(
       where: { id: orderId },
       include: { user: true },
     });
-    if (!existing) {
+    if (!existing || existing.ownerId !== ownerId) {
       return { ok: false, statusCode: 404, error: "Заказ не найден" };
     }
     const cur = existing.status as OrderStatus;
@@ -893,6 +1051,7 @@ async function performOrderStatusUpdate(
     });
     void notifyAfterOrderStatusChangeFromApi({
       id: updated.id,
+      ownerId: updated.ownerId,
       status: updated.status,
       total: updated.total,
       user: { telegramId: updated.user.telegramId },
@@ -915,6 +1074,8 @@ app.post("/order/status", async (req: Request, res: Response) => {
   try {
     console.log("ORDER STATUS DATA:", req.body);
     if (!denyIfNotAdmin(req, res)) return;
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
 
     const { id, status } = req.body as {
       id?: unknown;
@@ -926,7 +1087,7 @@ app.post("/order/status", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Нужен id" });
     }
 
-    const result = await performOrderStatusUpdate(orderId, status);
+    const result = await performOrderStatusUpdate(orderId, owner.id, status);
     if (!result.ok) {
       return res.status(result.statusCode).json({ error: result.error });
     }
@@ -940,12 +1101,14 @@ app.post("/order/status", async (req: Request, res: Response) => {
 app.put("/orders/:id/status", async (req: Request, res: Response) => {
   try {
     if (!denyIfNotAdmin(req, res)) return;
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     const orderId = Number(req.params.id);
     if (!Number.isFinite(orderId)) {
       return res.status(400).json({ error: "Неверный id" });
     }
     const { status } = req.body as { status?: unknown };
-    const result = await performOrderStatusUpdate(orderId, status);
+    const result = await performOrderStatusUpdate(orderId, owner.id, status);
     if (!result.ok) {
       return res.status(result.statusCode).json({ error: result.error });
     }
@@ -959,6 +1122,8 @@ app.put("/orders/:id/status", async (req: Request, res: Response) => {
 async function handleAdminOrderPatch(req: Request, res: Response) {
   try {
     if (!denyIfNotAdmin(req, res)) return;
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     const orderId = Number(req.params.id);
     if (!Number.isFinite(orderId)) {
       return res.status(400).json({ error: "Неверный id" });
@@ -993,7 +1158,7 @@ async function handleAdminOrderPatch(req: Request, res: Response) {
     }
 
     const exists = await prisma.order.findUnique({ where: { id: orderId } });
-    if (!exists) {
+    if (!exists || exists.ownerId !== owner.id) {
       return res.status(404).json({ error: "Заказ не найден" });
     }
 
@@ -1022,6 +1187,7 @@ async function handleAdminOrderPatch(req: Request, res: Response) {
     ) {
       void notifyAfterOrderStatusChangeFromApi({
         id: updated.id,
+        ownerId: updated.ownerId,
         status: updated.status,
         total: updated.total,
         user: { telegramId: updated.user.telegramId },
@@ -1042,6 +1208,8 @@ app.patch("/orders/:id", handleAdminOrderPatch);
 app.delete("/orders/clear", async (req: Request, res: Response) => {
   try {
     if (!denyIfNotAdmin(req, res)) return;
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
 
     const rawType = Array.isArray(req.query.type)
       ? req.query.type[0]
@@ -1062,7 +1230,9 @@ app.delete("/orders/clear", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Unsupported clear type" });
     }
 
-    const deleted = await prisma.order.deleteMany({ where });
+    const deleted = await prisma.order.deleteMany({
+      where: { ...where, ownerId: owner.id },
+    });
     return res.json({ deleted: deleted.count });
   } catch (e) {
     console.error("DELETE /orders/clear:", e);
@@ -1073,8 +1243,12 @@ app.delete("/orders/clear", async (req: Request, res: Response) => {
 app.post("/analytics", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     console.log("ANALYTICS DATA:", req.body);
-    const orders = await prisma.order.findMany();
+    const orders = await prisma.order.findMany({
+      where: { ownerId: owner.id },
+    });
 
     const totalOrders = orders.length;
     const totalRevenue = orders
@@ -1125,7 +1299,10 @@ function orderStatusRu(status: string): string {
 // ================== GET PRODUCTS ==================
 app.get("/products", async (req: Request, res: Response) => {
   try {
+    const owner = await resolveStoreTenant(req, res);
+    if (!owner) return;
     const products = await prisma.product.findMany({
+      where: { ownerId: owner.id },
       include: {
         category: { include: { parent: true } },
         variants: {
@@ -1145,6 +1322,8 @@ app.get("/products", async (req: Request, res: Response) => {
 
 app.get("/products/:id", async (req: Request, res: Response) => {
   try {
+    const owner = await resolveStoreTenant(req, res);
+    if (!owner) return;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Неверный id" });
@@ -1161,6 +1340,9 @@ app.get("/products/:id", async (req: Request, res: Response) => {
     if (!product) {
       return res.status(404).json({ error: "Товар не найден" });
     }
+    if (product.ownerId !== owner.id) {
+      return res.status(404).json({ error: "Товар не найден" });
+    }
     res.json(product);
   } catch (error) {
     console.error("GET PRODUCT ERROR:", error);
@@ -1168,8 +1350,9 @@ app.get("/products/:id", async (req: Request, res: Response) => {
   }
 });
 
-async function fetchAdminOrdersPayload() {
+async function fetchAdminOrdersPayload(ownerId: number) {
   const rows = await prisma.order.findMany({
+    where: { ownerId },
     include: { user: true },
     orderBy: { id: "desc" },
   });
@@ -1214,19 +1397,12 @@ async function fetchAdminOrdersPayload() {
 // ================== MY ORDERS (mini app, по Telegram userId) ==================
 app.get("/orders/my", async (req: Request, res: Response) => {
   try {
-    const raw = req.query.userId;
-    const q = Array.isArray(raw) ? raw[0] : raw;
-    const telegramId = Number(q);
-    if (!Number.isFinite(telegramId) || telegramId <= 0) {
+    const telegramId = telegramIdFromRequest(req);
+    if (!telegramId) {
       return res.status(400).json({ error: "Нужен userId (Telegram)" });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { telegramId: BigInt(telegramId) },
-    });
-    if (!user) {
-      return res.json([]);
-    }
+    const user = await getOrCreateOwnerByTelegram(prisma, telegramId);
 
     const orders = await prisma.order.findMany({
       where: { userId: user.id },
@@ -1244,7 +1420,9 @@ app.get("/orders/my", async (req: Request, res: Response) => {
 app.get("/orders", async (req: Request, res: Response) => {
   if (!denyIfNotAdminQuery(req, res)) return;
   try {
-    res.json(await fetchAdminOrdersPayload());
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
+    res.json(await fetchAdminOrdersPayload(owner.id));
   } catch (e) {
     console.error("LIST ORDERS ERROR:", e);
     res.status(500).json({ error: "Ошибка загрузки заказов" });
@@ -1254,7 +1432,9 @@ app.get("/orders", async (req: Request, res: Response) => {
 app.post("/orders/list", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
-    res.json(await fetchAdminOrdersPayload());
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
+    res.json(await fetchAdminOrdersPayload(owner.id));
   } catch (e) {
     console.error("LIST ORDERS ERROR:", e);
     res.status(500).json({ error: "Ошибка загрузки заказов" });
@@ -1264,13 +1444,14 @@ app.post("/orders/list", async (req: Request, res: Response) => {
 /** Уведомление админу в Telegram о новом заказе из POST /orders (Prisma). */
 async function notifyAdminNewOrderTelegram(input: {
   orderId: number;
+  ownerId: number;
   customerName: string;
   phone: string;
   address: string;
   total: number;
   items: { name: string; quantity: number }[];
 }): Promise<void> {
-  const chatId = getNotifyTargetChatId();
+  const chatId = getNotifyTargetChatId(input.ownerId);
   if (chatId == null) {
     console.log(
       "TELEGRAM ORDER NOTIFY: пропуск (нет чата: задайте CHAT_ID или /start у бота)"
@@ -1288,17 +1469,20 @@ async function notifyAdminNewOrderTelegram(input: {
     input.items.map((i) => `- ${i.name} x${i.quantity}`).join("\n");
 
   try {
-    if (bot) {
-      await bot.telegram.sendMessage(chatId, message, {
+    const tgBot = getBotForOwner(input.ownerId) ?? bot;
+    if (tgBot) {
+      await tgBot.telegram.sendMessage(chatId, message, {
         reply_markup: adminNewOrderNotifyKeyboard(input.orderId),
       });
       console.log("TELEGRAM ORDER NOTIFY: ok", input.orderId);
       return;
     }
 
-    const token = process.env.BOT_TOKEN;
+    const token =
+      process.env.BOT_TOKEN?.trim() ||
+      process.env.BOT_TOKENS?.split(/[,;]+/).map((s) => s.trim()).filter(Boolean)[0];
     if (!token) {
-      console.log("TELEGRAM ORDER NOTIFY: пропуск (нет BOT_TOKEN)");
+      console.log("TELEGRAM ORDER NOTIFY: пропуск (нет BOT_TOKEN / BOT_TOKENS)");
       return;
     }
 
@@ -1432,18 +1616,24 @@ app.post("/orders", async (req: Request, res: Response) => {
 
   try {
     const { order, user } = await prisma.$transaction(async (tx) => {
-      let user = await tx.user.findUnique({
-        where: { telegramId: BigInt(body.user.telegramId) },
-      });
-
-      if (!user) {
-        user = await tx.user.create({
-          data: {
-            telegramId: BigInt(body.user.telegramId),
-            name: userNameSanitized || null,
-          },
-        });
+      const telegramId = String(body.user.telegramId ?? "").trim();
+      if (!telegramId) {
+        throw new Error("BAD_TELEGRAM_ID");
       }
+      const user = await getOrCreateOwnerByTelegram(
+        tx as typeof prisma,
+        telegramId,
+        userNameSanitized || null
+      );
+
+      const firstProduct = await tx.product.findUnique({
+        where: { id: items[0]!.productId },
+        select: { id: true, ownerId: true },
+      });
+      if (!firstProduct) {
+        throw new Error("NOT_FOUND");
+      }
+      const storeOwnerId = firstProduct.ownerId;
 
       for (const item of items) {
         const productId = Number(item.productId);
@@ -1452,12 +1642,21 @@ app.post("/orders", async (req: Request, res: Response) => {
           throw new Error("INVALID_ITEM");
         }
 
+        const p = await tx.product.findUnique({
+          where: { id: productId },
+          select: { ownerId: true },
+        });
+        if (!p || p.ownerId !== storeOwnerId) {
+          throw new Error("CROSS_SHOP_CART");
+        }
+
         const sizeRow = await tx.size.findFirst({
           where: {
             size: String(item.size),
             variant: {
               productId,
               color: String(item.color),
+              product: { ownerId: storeOwnerId },
             },
           },
         });
@@ -1479,13 +1678,14 @@ app.post("/orders", async (req: Request, res: Response) => {
         }
 
         await tx.$executeRaw(
-          Prisma.sql`UPDATE "Product" SET "sold" = "sold" + ${qty} WHERE "id" = ${productId}`
+          Prisma.sql`UPDATE "Product" SET "sold" = "sold" + ${qty} WHERE "id" = ${productId} AND "ownerId" = ${storeOwnerId}`
         );
       }
 
       const order = await tx.order.create({
         data: {
           userId: user.id,
+          ownerId: storeOwnerId,
           total: orderTotal,
           status: "NEW",
           customerPhone: customerPhoneValue,
@@ -1542,6 +1742,7 @@ app.post("/orders", async (req: Request, res: Response) => {
 
     void notifyAdminNewOrderTelegram({
       orderId: orderForResponse.id,
+      ownerId: orderForResponse.ownerId,
       customerName: displayName,
       phone,
       address,
@@ -1566,6 +1767,9 @@ app.post("/orders", async (req: Request, res: Response) => {
     if (code === "INVALID_ITEM") {
       return res.status(400).json({ error: "Неверные данные позиции в заказе" });
     }
+    if (code === "BAD_TELEGRAM_ID") {
+      return res.status(400).json({ error: "Нужен Telegram userId" });
+    }
     if (code === "NOT_FOUND") {
       return res
         .status(400)
@@ -1573,6 +1777,11 @@ app.post("/orders", async (req: Request, res: Response) => {
     }
     if (code === "OUT_OF_STOCK") {
       return res.status(400).json({ error: "Недостаточно товара на складе" });
+    }
+    if (code === "CROSS_SHOP_CART") {
+      return res
+        .status(400)
+        .json({ error: "В корзине товары из разных магазинов" });
     }
     console.error("ORDER ERROR FULL:", error);
     res.status(500).json({ error: "Ошибка при создании заказа" });
@@ -1590,6 +1799,8 @@ app.post(
   upload.single("file"),
   async (req: Request, res: Response) => {
     try {
+      const owner = await requireOwner(req, res);
+      if (!owner) return;
       if (!isCloudinaryConfigured()) {
         return res.status(503).json({
           error: "Cloudinary не настроен (CLOUD_NAME, CLOUD_KEY, CLOUD_SECRET)",
@@ -1615,7 +1826,7 @@ app.post(
       }
 
       const existing = await prisma.order.findUnique({ where: { id } });
-      if (!existing) {
+      if (!existing || existing.ownerId !== owner.id) {
         return res.status(404).json({ error: "Заказ не найден" });
       }
 
@@ -1661,6 +1872,8 @@ app.post(
 app.put("/products/:id", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     console.log("PRODUCT UPDATE DATA:", req.body);
     const body = req.body as {
       name?: unknown;
@@ -1746,9 +1959,9 @@ app.put("/products/:id", async (req: Request, res: Response) => {
       }
       const category = await prisma.category.findUnique({
         where: { id: normalizedCategoryId },
-        select: { id: true, parentId: true },
+        select: { id: true, parentId: true, ownerId: true },
       });
-      if (!category || category.parentId == null) {
+      if (!category || category.parentId == null || category.ownerId !== owner.id) {
         return res.status(400).json({ error: "Выберите подкатегорию" });
       }
       scalar.categoryId = normalizedCategoryId;
@@ -1779,6 +1992,10 @@ app.put("/products/:id", async (req: Request, res: Response) => {
     }
 
     const product = await prisma.$transaction(async (tx) => {
+      const exists = await tx.product.findUnique({ where: { id } });
+      if (!exists || exists.ownerId !== owner.id) {
+        throw new Error("PRODUCT_NOT_FOUND");
+      }
       if (cleanVariants) {
         await tx.size.deleteMany({
           where: { variant: { productId: id } },
@@ -1821,6 +2038,9 @@ app.put("/products/:id", async (req: Request, res: Response) => {
 
     res.json(product);
   } catch (e) {
+    if (e instanceof Error && e.message === "PRODUCT_NOT_FOUND") {
+      return res.status(404).json({ error: "Товар не найден" });
+    }
     console.error("UPDATE PRODUCT ERROR:", e);
     res.status(500).json({ error: "Ошибка обновления товара" });
   }
@@ -1830,12 +2050,18 @@ app.put("/products/:id", async (req: Request, res: Response) => {
 app.delete("/products/:id", async (req: Request, res: Response) => {
   if (!denyIfNotAdmin(req, res)) return;
   try {
+    const owner = await requireOwner(req, res);
+    if (!owner) return;
     const id = Number(req.params.id);
     if (!Number.isFinite(id)) {
       return res.status(400).json({ error: "Неверный id" });
     }
 
     await prisma.$transaction(async (tx) => {
+      const exists = await tx.product.findUnique({ where: { id } });
+      if (!exists || exists.ownerId !== owner.id) {
+        throw new Error("PRODUCT_NOT_FOUND");
+      }
       const variants = await tx.variant.findMany({
         where: { productId: id },
         select: { id: true },
@@ -1850,6 +2076,9 @@ app.delete("/products/:id", async (req: Request, res: Response) => {
 
     res.status(204).send();
   } catch (e) {
+    if (e instanceof Error && e.message === "PRODUCT_NOT_FOUND") {
+      return res.status(404).json({ error: "Товар не найден" });
+    }
     console.error("DELETE PRODUCT ERROR:", e);
     res.status(500).json({ error: "Ошибка удаления товара" });
   }
@@ -1868,27 +2097,26 @@ process.on("unhandledRejection", (reason) => {
 const PORT = process.env.PORT || 3000;
 
 void (async () => {
-  try {
-    await ensureBaseCategories();
-    const fallbackCategoryId = await getDefaultLeafCategoryId();
-    if (fallbackCategoryId != null) {
-      await prisma.product.updateMany({
-        where: { categoryId: 0 },
-        data: { categoryId: fallbackCategoryId },
-      }).catch(() => undefined);
-    }
-  } catch (e) {
-    console.error("CATEGORY INIT ERROR:", e);
-  }
-
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log(`Server running on ${PORT}`);
 
-    if (bot) {
-      bot.telegram
-        .setWebhook(TELEGRAM_WEBHOOK_URL)
-        .then(() => console.log("Webhook set:", TELEGRAM_WEBHOOK_URL))
-        .catch((err) => console.error("Webhook error:", err));
+    if (publicApiBase && bots.length > 0) {
+      for (let i = 0; i < bots.length; i++) {
+        const url = `${publicApiBase}/telegram-webhook/${i}`;
+        void bots[i]!.telegram
+          .setWebhook(url)
+          .then(() => console.log("Webhook set:", url))
+          .catch((err) => console.error("Webhook error:", i, err));
+      }
+    } else if (bots.length > 0) {
+      console.log(
+        "API_URL not set — skipping setWebhook (set API_URL for production; path /telegram-webhook/{index})"
+      );
+    }
+    try {
+      await initDynamicUserBotsFromDatabase();
+    } catch (e) {
+      console.error("initDynamicUserBotsFromDatabase:", e);
     }
   });
 })();

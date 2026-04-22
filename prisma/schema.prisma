@@ -14,10 +14,16 @@ datasource db {
 
 model User {
   id          Int      @id @default(autoincrement())
-  telegramId  BigInt   @unique
+  telegramId  String   @unique
   name        String?
+  /// Токен @BotFather — свой бот владельца (онбординг без BOT_TOKENS в env)
+  botToken    String?  @unique
 
   orders      Order[]
+  products    Product[]
+  categories  Category[]
+  settings    PaymentSettings[]
+  ownedOrders Order[]  @relation("OrderOwner")
 }
 
 model Product {
@@ -35,6 +41,8 @@ model Product {
   isSale           Boolean   @default(false)
   discountPercent  Int       @default(0) // 0–100, скидка от поля price
   sold             Int       @default(0)
+  ownerId          Int
+  owner            User      @relation(fields: [ownerId], references: [id])
 
   variants    Variant[]
 }
@@ -43,6 +51,8 @@ model Category {
   id        Int        @id @default(autoincrement())
   name      String
   parentId  Int?
+  ownerId   Int
+  owner     User       @relation(fields: [ownerId], references: [id])
 
   parent    Category?  @relation("CategoryToCategory", fields: [parentId], references: [id])
   children  Category[] @relation("CategoryToCategory")
@@ -73,6 +83,8 @@ model Order {
   id        Int      @id @default(autoincrement())
   user      User     @relation(fields: [userId], references: [id])
   userId    Int
+  ownerId   Int
+  owner     User     @relation("OrderOwner", fields: [ownerId], references: [id])
 
   total     Int
   status    String   @default("NEW") // NEW | ACCEPTED | PAID_PENDING | CONFIRMED | SHIPPED | CANCELLED
@@ -108,12 +120,16 @@ model OrderItem {
 
 // Singleton id=1: реквизиты для оплаты (мини-апп + бот).
 model PaymentSettings {
-  id     Int     @id @default(1)
+  id      Int    @id @default(autoincrement())
+  ownerId Int
+  owner   User   @relation(fields: [ownerId], references: [id])
   mbank  String?
   optima String?
   obank  String?
   card   String?
   qr     String?
+
+  @@unique([ownerId])
 }
 
 model Promo {
